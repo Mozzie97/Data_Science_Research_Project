@@ -1,0 +1,8 @@
+{
+  "number": 22,
+  "max_depth": 16,
+  "min_samples_leaf": 1,
+  "max_features": "log2",
+  "value": 0.8485,
+  "std_err": 0.0042
+}

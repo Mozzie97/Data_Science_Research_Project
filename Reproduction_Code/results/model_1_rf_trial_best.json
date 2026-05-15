@@ -1,0 +1,9 @@
+{
+  "number": 107,
+  "max_depth": 32,
+  "min_samples_leaf": 5,
+  "max_features": "all",
+  "min_samples_split": 10,
+  "value": 0.9064,
+  "std_err": 0.0011
+}

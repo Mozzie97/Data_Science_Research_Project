@@ -1,0 +1,9 @@
+{
+  "number": 420,
+  "min_impurity_decrease": 0,
+  "min_weight_fraction_leaf": 0,
+  "max_depth": 8,
+  "min_samples_split": 10,
+  "value": 0.8814,
+  "std_err": 0.0019
+}
