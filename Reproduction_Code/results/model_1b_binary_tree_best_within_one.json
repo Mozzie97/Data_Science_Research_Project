@@ -1,0 +1,8 @@
+{
+  "number": 71,
+  "min_impurity_decrease": 0.001,
+  "min_weight_fraction_leaf": 0,
+  "max_depth": 8,
+  "value": 0.8476,
+  "std_err": 0.0026
+}

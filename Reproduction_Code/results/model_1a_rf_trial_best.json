@@ -1,0 +1,8 @@
+{
+  "number": 3,
+  "max_depth": 32,
+  "min_samples_leaf": 1,
+  "max_features": "sqrt",
+  "value": 0.8525,
+  "std_err": 0.0047
+}

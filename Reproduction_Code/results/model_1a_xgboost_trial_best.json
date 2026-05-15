@@ -1,0 +1,7 @@
+{
+  "number": 9,
+  "learning_rate": 0.05,
+  "subsample": 0.55,
+  "value": 0.8586,
+  "std_err": 0.0043
+}
