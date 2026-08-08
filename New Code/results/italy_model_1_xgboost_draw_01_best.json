@@ -1,0 +1,9 @@
+{
+  "number": 15,
+  "learning_rate": 0.05,
+  "subsample": 1,
+  "max_depth": 3,
+  "colsample_bytree": 0.6,
+  "value": 0.8167,
+  "std_err": 0.0082
+}
