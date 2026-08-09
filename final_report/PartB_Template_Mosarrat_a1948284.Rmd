@@ -1,0 +1,1498 @@
+---
+title: "How does Health Literacy Influence the Uptake of Vaccines, and How Does Vaccination Uptake Affect Adherence to Face Mask Wearing and General Protective Health Behaviors? An Italy specific study."
+subtitle: "Part B template"
+author: "Mosarrat Jahan Siddika"
+date: "2026-03-18"
+output:
+  pdf_document:
+      number_sections: true
+bibliography: references_final.bib
+geometry: "top=20mm, left=20mm, right=20mm, bottom=20mm"
+fontsize: 12pt
+header-includes:
+  - \usepackage{graphicx}
+  - \usepackage{grffile}
+  - \usepackage{placeins}
+---
+
+\newtheorem{theorem}{Theorem}
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Project supervisor: Anthony Mays
+
+# Declaration
+
+In submitting this work I am indicating that I have read the University's Academic Integrity Policy. I declare that all material in this assessment is my own work except where there is clear acknowledgement and reference to the work of others. I give permission for this work to be reproduced and submitted to other academic staff for educational purposes.
+
+# Abstract
+
+Health Literacy has been linked to both protective behaviour and vaccination uptake during the COVID-19 pandemic, but as far we know, no existing study has examined health literacy, vaccination status, and protective behavioural compliance together within a single framework. This report extends a validated Australian machine learning pipeline (@ryan2025) to Italy, using the YouGov COVID-19 Behaviour Tracker (@jones_2020), the Oxford COVID-19 Government Response Tracker (@oxcgrt_2023), and the subgroup level findings from the M-POHL Italian HLS19 survey (@rosano2022; @cadeddu2022) to simulate individual level coronavirus related health literacy (HL-COVID) and vaccine literacy (VL) scores. Two aims were addressed: whether HL-COVID and VL predict vaccination status once age and region are accounted for (Aim 1), and whether vaccination status, alongside the predictors used in the Australian study, improves prediction of face mask wearing and general protective behaviour compliance (Aim 2). HL-COVID and VL were simulated 20 times per respondent from HLS19 subgroup probabilities and analysed via proportional odds logistic regression pooled with Rubin's Rules to test their association with vaccination status (Aim 1). Vaccination status was then tested as an additional predictor of face mask wearing and general protective behaviour compliance using XGBoost and Random Forest classifiers, tuned by grid search and pooled across the same 20 draws, with HL-COVID and VL retained among the predictor set for these models but not themselves the focus of that test (Aim 2).
+
+Neither HL-COVID nor VL predicted vaccination status after adjusting for age and region (pooled OR=1.004, p=0.866, and OR=0.993, p=0.731, respectively); age was the only meaningful predictor, particularly among respondents 65 and older (OR=1.598, p<0.002). The classification models predicted face mask wearing and general protective behaviour with pooled test AUCs between 0.805 and 0.844. Vaccination status ranked only modestly among the top ten predictors of face mask wearing and did not feature at all for general protective behaviour, while HL-COVID and VL were absent from both, and partial dependence plots showed no meaningful separation across literacy or vaccination categories relative to the uncertainty in the estimates. Willingness to self-isolate was consistently the strongest predictor of both outcomes, while perceived severity of COVID-19 was a strong predictor only for general protective behaviour compliance. These findings do not support health literacy as a driver of vaccination uptake, or vaccination status as a strong driver of protective behaviour, in this Italian sample, pointing instead to self-isolation intentions and demographic factors as the more reliable predictors of compliance. 
+
+
+\newpage
+
+# Introduction
+
+This project investigates whether health literacy predicts vaccination status, and whether vaccination status in turn predicts adherence to face mask wearing and general protective health behaviour, in Italy during the COVID-19 pandemic. Health literacy is defined as "the knowledge, motivation and competences to access, understand, appraise and apply health information in order to make judgments and take decisions in everyday life concerning health care, disease prevention and health promotion to maintain or improve quality of life throughout the course of life" (@sorensen2015). Health literacy has been positively associated with both the adoption of COVID-19 protective measures and vaccination acceptance across Europe (@vasileia2025). However, to the best of our knowledge, the pathway connecting health literacy, vaccination status, and behavioural adherence has not previously been examined together within a single Italian sample.
+
+The starting point for this project was the reproduction, in R, of the machine learning framework used by Ryan et al. (2025) to identify predictors of face mask wearing and general protective behaviour compliance in Australia. This reproduction refitted logistic regression, classification tree, XGBoost, and Random Forest models on the Australian YouGov data (Jones 2020) with XGBoost and Random Forest having the highest AUC values (0.916 and 0.912, respectively) for face mask wearing prediction, proving that these two algorithms outperformed the baseline algorithms. This report extends the same framework to Italy using three data sources: the YouGov COVID-19 Behaviour Tracker (Jones 2020), the Oxford COVID-19 Government Response Tracker (Phillips 2023), and the Italian HLS19 findings reported by Rosano et al. (2022) and Cadeddu et al. (2022) to simulate individual level coronavirus related health literacy (HL-COVID) and vaccine literacy (VL) scores. Two aims follow directly from this extension. Aim 1 asks whether HL-COVID and VL predict vaccination status among Italian respondents, once age and region are accounted for. Aim 2 asks whether vaccination status, alongside the same predictors seen in Ryan et al.'s (2025) study, improves prediction of face mask wearing and general protective behaviour compliance, and whether health literacy and vaccine literacy themselves emerge as important predictors of these outcomes.
+
+Italy was one of the first and most severely affected European countries during the COVID-19 pandemic (@indolfi2020). And since they participated in both the YouGov Behaviour Tracker and M-POHL HLS19 survey, they make a suitable country for this extension. Establishing whether health literacy predicts either outcome also has a practical motivation: Health Literacy has been proposed as a useful indicator for shaping public health messaging in future health crises (@vasileia2025).
+
+The remainder of this report proceeds as follows. The Background section reviews the wider literature on health literacy, vaccination, and protective behaviour, and gives a brief overview of the methods and algorithms used in this study. The Methodology section describes the data sources and the simulation procedure used to predict face mask wearing and protective behaviour compliance. The Results section reports the findings for each aim in turn, and the Discussion considers what these findings mean for the project's research question.
+
+# Background
+
+This project builds on Ryan et al. (2025), who used machine learning to identify predictors of face mask wearing and general protective behaviour compliance in Australia, before and after state level mask mandates. Their tree-based ensemble models outperformed logistic regression and classification trees. And predictors shifted between periods: trust in government and employment status predicted compliance before mandates, while willingness to isolate became a distinct predictor for after mandates; age, survey week, average number of contacts, wellbeing, and perceived illness threat predicted compliance throughout the pre/post mandate period. Ryan et al. (2025) also mentioned how several of these predictors, particularly perceived susceptibility and severity, can be linked to the Health Belief Model. Health literacy, which covers the appraisal of health information, sits within this same theoretical framework, yet it wasn't included as a predictor in the study. This is a gap this project's Italian extension addresses.
+
+Whether health literacy would plausibly predict vaccination status has been explored by broader European studies. Health literacy is defined as "the knowledge, motivation and competences to access, understand, appraise and apply health information in order to make judgments and take decisions in everyday life concerning health care, disease prevention and health promotion to maintain or improve quality of life throughout the course of life" (@sorensen2015). And the first comparative European survey on health literacy found that there are certain subgroups of respondents whose proportion of people with limited health literacy significantly exceeded the average (47.6%) for the overall sample of eight countries (@sorensen2015). This subgroup includes people with poor health, multiple long term illnesses, high use of healthcare services, low social status, low economic status, lower education, and older age (@sorensen2015). Additionally, a scoping review was conducted by Vasileia et al. (2025) of a number of European studies which showed a consistent positive association between health literacy and both the adoption of COVID-19 protective measures and vaccination acceptance. Furthermore, in a sample of Italian anticoagulated patients, high health literacy was associated with lower rates of vaccine hesitancy, an effect strengthened by patients' health management (@magon2021). Together these findings motivate testing whether the same relationship holds for a much larger population in Italy, which this project does in Aim 1.
+
+Separately, in a sample of 795 individuals surveyed at a Naples immunization centre, adherence to face mask wearing and hand washing slightly increased between the first and second dose, but the willingness to adhere to them went down after the booster dose. But a more concerning drop occurred in physical distancing, which fell from 90.1% to 74.7%. Maintaining such adherence to these three COVID-19 preventative measures were also predicted by perceived severity of COVID-19 (@corea2022). A four-country survey found a similar pattern: social behaviours were the protective measures that saw the most relaxation during vaccination campaigns, which is consistent with the Health Belief Model since higher cost activities such as this are difficult to maintain for an extended duration (@degaetano2023). These two studies establish that vaccination related behavioural relaxation occurs in Italy, but our aim is to extend this onto the same predictive framework as face mask wearing and general protective behaviour to analyze if this pattern still holds.
+
+Testing either aim required health literacy scores for individual YouGov respondents in Italy, but the only source of the Italian health literacy data were the published findings of the M-POHL HLS19 survey presented by Rosano et al. (2022) and Cadeddu et al. (2022). Rosano et al. (2022) measured coronavirus related health literacy (HL-COVID) in a sample of 3500 participants, representing the adult population of Italy, and found that limited HL-COVID was concentrated among respondents older than 65, with low education level, lower economic status, and from the southern Italy region or the islands. Cadeddu et al. (2022) on the other hand, measured vaccine literacy (VL) and found that participants from the southern Italy or the islands, with medium to low economic status, with medium to low education level, and with some migration background, significantly predicted limited VL in the Italian sample. Because both studies reported their findings by age group and region, alongside other factors, their published subgroup probabilities could be used to simulate individual level HL-COVID and VL scores for the YouGov sample, as described in the Methodology section (Section \ref{sec:methodology}).
+
+To the best of our knowledge, no existing Italian study combines health literacy, vaccination status, and protective behaviour compliance within a single framework using the machine learning approach validated by the Ryan et al. (2025) reproduction. This report attempts to close that gap using the data and simulation procedure described in the following Methodology section (Section \ref{sec:methodology}).
+
+Several methods recur throughout this report and are briefly described here. Logistic regression is a classification algorithm in machine learning that predicts the probability of the occurrence of a particular outcome, the value of which falls between 0 and 1 (Lee, n.d.), for e.g. whether a respondent wears a mask or not based on their characteristics. And due to the probability being constrained between 0 and 1 they are difficult to model using a linear function, hence, odds ratio gets implemented in logistic regression to portray the linear relationship on a transformed scale by telling us how the odds change when an input variable changes by one unit. 
+
+Proportional logistic regression is the same idea, except they are for outcomes with more than two ordered categories (@mcnulty_2026), for e.g. this project’s vaccination status (unvaccinated, one dose, two doses). It assumes each predictor has a similar effect on any level of the outcome variable.
+
+One-hot encoding turns a categorical variable into several yes/no columns (binary columns) that a machine learning model can read as numbers (@geeksforgeeks_2026). Each respondent gets a 1 in the column matching their category and a 0 in every other column for that variable, so the model is not misled into thinking the categories have a numeric order that does not exist.
+
+Rubin’s Rules combine several separate results, each with its own estimate and uncertainty, into an overall result. The combined uncertainty accounts for both the average uncertainty within each individual result and how much the results differ from each other (@metricgate_2026), so the pooled estimate reflects the full picture rather than just one version of it. In this report, they are used to combine results calculated separately across the 20 simulated health literacy/vaccine literacy draws into one final estimate with a standard error and 95% confidence interval.
+
+Random Forest and XGBoost both make predictions by combining many decision trees, but build those trees differently. Random Forest builds each tree separately using a random slice of the data and features, then averages all the trees’ answers together (@geeksforgeeks_2025). XGBoost instead builds trees one after another, with each new tree specifically trying to fix the mistakes made by the trees before it (@geeksforgeeks_2025).
+
+Model performance is measured by comparing predictions against actual outcomes. Accuracy is simply the share of predictions that were correct; precision is how often a predicted “yes” was actually a “yes”; recall is how many of the actual “yes” cases the model manages to catch; and F1 combines precision and recall into one score. ROC-AUC measures how well the model tells the two outcome classes apart, where 1 means perfect separation and 0.5 means it is no better than a coin flip. 
+
+# Methodology {#sec:methodology}
+
+Throughout this section, Model 1 refers to the model predicting face mask wearing behaviour, and Model 2 refers to the model predicting general protective behaviour compliance. The construction of these models will be described further in the "Outcome and predictor construction" subsection (Section \ref{sec:outcome-construction}).
+
+## Data Sources
+
+Three data sources, all filtered to Italy, were used in this analysis. The YouGov Covid-19 Behaviour Tracker (Jones et al., 2020) provided individual level cross-sectional survey responses on protective behaviours, demographics, mental health, wellbeing, illness threat perception, and vaccination status, comprising of 54,270 respondents and 512 raw variables. This survey was administered by the Imperial College London in partnership with YouGov, running from 29th March 2020 to 3rd March 2022 across 29 countries including Italy. Throughout this period, responses from the survey, which is a representation of the national data on protective health behaviour during COVID-19, were collected.
+
+The Oxford COVID-19 Government Response Tracker (Phillips et al., 2023) supplied the national level daily policy series, which spans the same 2020 to 2022 window as the YouGov survey, used to identify Italy's mask mandate period.
+
+The M-POHL Health Literacy Survey 2019 Italian sample was collected via a combined online and telephone survey administered between 8th April and 8th May 2021, from a stratified random sample of 3,500 adults aged 18 and over, representative of the Italian population. The reported findings of this survey in Rosano et al. (2022) and Cadeddu et al. (2022), supplied the demographic subgroup probabilities used to simulate individual level Coronavirus related health literacy (HL-COVID) and vaccine literacy (VL) respectively, described in the next subsection.
+
+## Step 1: Linking Health Literacy and Vaccine Literacy to Vaccination Status
+
+### Simulating individual level health literacy and vaccine literacy {#sec:simulating-hl}
+
+The YouGov dataset does not contain an individual level health literacy measure and the HLS19 data are only published as subgroup level distributions, by age group and by region, not linked to individual respondents, for e.g. Rosano et al. (2022) reported that 56.6% of Italians aged 18-29 had "Excellent" HL-COVID. Here we can observe that the score wasn't attached to an individual respondent but to a number of people grouped together by their age. To bridge this gap, each YouGov respondent's age was binned into the four age groups (18-29, 30-44, 45-64, 65+) as reported in Rosano et al. (2022) and Cadeddu et al. (2022), and their region was similarly mapped onto the four reported regions, collapsing YouGov's "South" and "Islands" into a single "South and Islands" category to match the papers' grouping.
+
+For each respondent, two independent probabilities were looked up, one from their age group and the other from their region; HL-COVID was measured by Excellent/Sufficient/Limited, whilst VL was measured by Good/Sufficient/Limited. The two probabilities were averaged and re-normalised to sum to 1, for e.g. a respondent aged 18-29 from the North West region has an age group probability of 56.6% for "Excellent" HL-COVID and a region probability of 50.3% "Excellent", averaging the two gives 53.45% and doing the same for "Sufficient" and "Limited" gives three averaged values that sum slightly more or less than 100%, hence, dividing all three averaged values by their new total forces them back to summing to exactly 1 before they are used as sampling probabilities (see lines 80-90 in `1b_simulate_hl_italy.R`), and a single category (Excellent/Sufficient/Limited for HL-COVID; Good/Sufficient/Limited for VL) was then randomly drawn for each respondent 20 times, each with its own random seed to reflect the uncertainty this simulation introduces, according to these combined probabilities. Point to be noted, this simulation was conducted on a cleaned dataset (described in the "Data cleaning and missing data" subsection, Section \ref{sec:datacleaning}) and all subsequent analysis was carried out separately on each of the 20 draws and then pooled. The R script `1b_simulate_hl_italy.R`, located in the Github link, performs the simulation as described (see the Statistical appendix for more information about the R scripts).
+
+### Statistical model and pooling across draws {#sec:pooling}
+
+For each draw, a proportional odds logistic regression was fitted with vaccination status (0=unvaccinated, 1=one dose, 2=two doses) as the ordered outcome. Three models were compared per draw (see lines 57-71 in `3_hl_vaccination_italy.R`):
+
+- Base: `vax_ordered ~ age_group + region_hls19`
+- HL model: `vax_ordered ~ hl_covid_num + age_group + region_hls19`
+- VL model: `vax_ordered ~ vl_num + age_group + region_hls19`
+
+Where `hl_covid_num` and `vl_num` are numeric representations of HL-COVID and VL categories, respectively, and `vax_ordered` is the ordered vaccination status.
+
+Model fit was assessed via AIC and BIC (see lines 82-102 in `3_hl_vaccination_italy.R`), and a likelihood ratio test (see lines 104-122 in `3_hl_vaccination_italy.R`), with 1 degree of freedom, compared each augmented model against the base model within each draw. The health literacy and vaccine literacy coefficient, alongside their standard error were then pooled across the 20 draws using Rubin's Rules, giving a combined estimate, standard error, z-statistic, p-value, and odds ratio with 95% confidence interval for each term (see lines 139-162 in `3_hl_vaccination_italy.R`):
+
+\begin{align}
+T_{total} &= \bar{U} + \left(1 + \frac{1}{M}\right) B \\
+SE_{pooled} &= \sqrt{T_{total}} \\
+z &= \frac{\bar{Q}}{SE_{pooled}} \\
+p &= 2\left[1 - \Phi(|z|)\right] \\
+OR &= \exp(\bar{Q}) \\
+OR_{lower\,95\%} &= \exp\left(\bar{Q} - 1.96 \cdot SE_{pooled}\right) \\
+OR_{upper\,95\%} &= \exp\left(\bar{Q} + 1.96 \cdot SE_{pooled}\right)
+\end{align}
+
+Where $\bar{Q}$ is the pooled point estimate, $\bar{U}$ is the average within-draw variance, $B$ is the between-draw variance, $M$ is the number of draws (20), $T_{total}$ is the total pooled variance, $SE_{pooled}$ is the pooled standard error, $z$ is the z-statistic, and $OR$ is the odds ratio.
+
+## Step 2: Vaccination Status as a Predictor of Face Mask Wearing and Protective Behaviour Compliance
+
+### Identifying Italy's mask mandate period
+
+Following the same method used in the Australian reproduction, Italy's national facial covering policy (OxCGRT variable H6M_Facial Coverings) was smoothed with a 14 day rolling mean and the mandate start date was taken as the first date this rolling average reached or exceeded a policy of 3. This identified 14 April 2020 as the start of Italy's national mask mandate.
+
+### Data cleaning and missing data {#sec:datacleaning}
+
+Variables with more than 10,854 missing values (20% of the 54,270 respondents, matching the proportional threshold used for Australia) were dropped (see lines 45-55 in `1_clean_dataset_italy.R`), this removed 458 of the 512 raw variables. Two groups of items were exempted from being treated as simply missing, because their absence reflects when a question was added to or dropped from the survey rather than genuine non-response: Mental health (PHQ-4) related responses before 1st May 2020 and comorbidity (d1_health) responses from 1 March 2022 onward, were both recoded explicitly to "N/A" rather than left blank (see lines 59-78 in `1_clean_dataset_italy.R`). And as described earlier, this recoding was done during data cleaning because PHQ-4 items were not part of the survey instrument before 30th April 2020 and comorbidity items were removed from the survey instrument after 25th February 2022. So respondents interviewed outside these windows were never asked these questions, which is why their non-response is recoded as "N/A" rather than being treated as a missing answer to a question they were actually asked. Point to be noted is that these dates were chosen as a uniform window for responses but to also closely reflect the actual dates in the YouGov dataset, however, these are not the exact dates. The earliest PHQ-4 answers in the file were on 30th April 2020, whilst the latest d1_health answers were 25th February 2022. All remaining rows with any missing values were then removed. Once the listwise deletion was applied, the final analytical sample for step 2 was almost entirely post mandate period, so a pre/post mandate split was not carried out for Italy as it was for Australia. Hence, only two models were fitted once, each on the full post-mandate sample: model 1 (face mask wearing) and model 2 (general protective behaviour compliance).
+
+### Outcome and predictor construction {#sec:outcome-construction}
+
+Outcomes were constructed like the Australian reproduction. Across the 17 item protective behaviour scenarios, four (mask use outside the home, in a grocery store, at a retailer, and on public transport) were used to compute a per-respondent face mask behaviour score by finding the row median, binarized to "Yes" if the score is 4 or above (i.e. "Frequently" or "Always") and "No" otherwise; this is the outcome of model 1. A general protective behaviour score, row median across all 17 items, was binarized and used as the outcome for model 2 (see lines 96-125 in `1_clean_dataset_italy.R`). Vaccination status was recoded from the raw survey data into four categories: 0=unvaccinated, 1=one dose, 2=two doses, and 3=any other or missing response (see lines 31-42 in `1_clean_dataset_italy.R`).
+
+Household size was recoded numerically, "8 or more" turns into 8 and "Don't know"/"Prefer not to say" is considered missing (see lines 16-21 in `1_clean_dataset_italy.R`). A derived comorbidities variable (`d1_comorbidity`) was constructed from the "None of these" (`d1_health_99`) and "Prefer not to say" (`d1_health_98`) variables. If "None of these" option was selected then we assumed the respondent had "No" comorbidity, otherwise it is "Yes" regardless. Similarly, if the respondent had selected "Prefer not to say" then the comorbidity column will have a "Prefer_not_to_say" value for the respondent (see lines 60, 129-140 in `1_clean_dataset_italy.R`). A fortnight based survey time variable (`week_number`) was computed as the number of complete 14 day blocks since the earliest surviving response date (see lines 142-143 in `1_clean_dataset_italy.R`).
+
+Categorical predictors (region, gender, isolate if unwell status, employment status, willingness to self-isolate, government-confidence items, mental health items, comorbidity status, and vaccination status) were one-hot encoded. Numeric predictors (non-household contacts, age, household size, wellbeing, perceived severity, perceived susceptibility, fortnight number, and the simulated literacy scores) remained numeric.
+
+In the Italian pipeline, a single feature-column list is computed once and reused, unchanged, for both model 1 and model 2, that is, the two models are given an identical set of predictors, differing in which outcome column each is trained against. All three composite behaviour scores (the face mask score, the overall protective behaviour score, and the non-mask protective behaviour score) are excluded from this shared list for both models.
+
+### Train/Test splitting
+
+A single plain random split was done by randomly dividing all the rows into two groups: 80% went into training and 20% went into testing. A fixed random seed (20240417) was used, matching the seed used in the Australian analysis. The same split was then reused for all 20 draws and for both model 1 and model 2, because every draw uses the same rows in the same order, only the simulated health literacy and vaccine literacy values change between draws. This gave 30,669 rows for training and 7,667 rows for testing, for every draw and every model. Check the R script `4_split_data_italy.R` to recreate the split.
+
+### Model training, hyperparameter tuning, and class imbalance {#sec:tuning}
+
+Two algorithms were used: XGBoost and Random Forest, each with the number of trees fixed at 250, matching the Australian reproduction (see line 11 in `5_italy_xgboost.R` and line 12 in `6_italy_rf.R`).
+
+Hyperparameters were tuned via grid search. Rather than a single non-overlapping 5-fold partition, five independent 80/20 train/validation splits were drawn, each stratified so the outcome's class proportions were preserved, each of them also had their own random seed (see lines 18-35 in `5_italy_xgboost.R` and 23-40 in `6_italy_rf.R`). Every grid combination was scored by the mean AUC across these five splits, with a standard error of SD/$\sqrt{5}$.
+
+| Algorithm | Grid parameters | Combinations |
+|---|---|---|
+| XGBoost | Learning rate $\in$ \{0.05, 0.1, 0.2, 0.3, 0.5\}; subsample $\in$ \{0.5, 0.7, 0.85, 1.0\}; maximum depth $\in$ \{3, 5, 7, 9\}; column sample by tree $\in$ \{0.6, 0.75, 0.9\} | 240 |
+| Random Forest | Maximum depth $\in$ \{4, 8, 16, 32\}; minimum samples leaf $\in$ \{1, 5, 20, 50, 100\}; maximum features $\in$ \{square root, log2, all\}; minimum samples split $\in$ \{2, 10, 50, 150\} | 240 |
+
+Table: Grid search parameters used for XGBoost and Random Forest hyperparameter tuning. \label{tab:gridparams}
+
+Tuning was carried out once per model, using only the first HL-COVID/VL draw's training data, that is, only draw 1 of the 20 HL-COVID/VL simulation draws described in the "Simulating individual level health literacy and vaccine literacy" subsection (Section \ref{sec:simulating-hl}) was tuned to obtain the hyperparameters. The selected hyperparameters were then reused unchanged for all 20 draws. The final hyperparameters were chosen from among all grid combinations within one standard error of the best mean AUC, selecting the most parsimonious of these ranked by the grid parameters in a fixed order. To put it simply, among the candidates within one standard error of the best AUC, they were sorted in ascending order first by learning rate, then subsample fraction, then maximum depth, then column sample fraction for XGBoost; or by maximum depth, then minimum samples per leaf, then maximum features, then minimum samples for Random Forest, and the first candidate in that ordering was taken as the chosen, most parsimonious combination. Random forest tuning was parallelized across CPU cores via a parallel PSOCK cluster since the 240 combination x 5 split grid at 250 trees per fit was computationally demanding.
+
+Both outcomes were imbalanced in the Italian data, roughly 96%/4% for face mask compliance and roughly 91%/9% for general protective behaviour compliance. Within every training fold, the minority class was randomly oversampled with replacement up to the size of the majority class before model fitting (see lines 37-54 in `5_italy_xgboost.R` and 42-59 in `6_italy_rf.R`).
+
+### Final model fitting and test set evaluation
+
+For each of the 20 draws, for each model and each algorithm, the hyperparameters were applied to refit the final model on the full oversampled training set which was then evaluated once on the test set which hasn't been oversampled. Precision, recall, accuracy, F1, and ROC AUC were computed from the confusion matrix at a fixed 0.5 probability threshold (see lines 85-116 in `5_italy_xgboost.R` and 98-129 in `6_italy_rf.R`). Per draw test set metrics together with their within draw standard errors carried over from the cross-validation step and were pooled across 20 draws using Rubin's Rules to give a combined estimate, pooled standard error, and 95% confidence interval for each metric, per model, per algorithm (see R script `9_fit_and_test_models_italy.R`).
+
+### Feature importance {#sec:featimp-method}
+
+To assess feature importance, for each draw, each model and each algorithm, the chosen model was refit 100 times on freshly randomly oversampled training data each time. The importance measure was then extracted for each fit and normalized to sum to 1 across features. The original research proposal was 10,000 iterations but that had been reduced to 100 after preliminary timing tests showed that even 500 iterations resulted in impractically long runtimes, hence, 100 was adopted as a computationally feasible compromise. These refits were also parallelized across CPU cores (see R script `8_permute_feature_importance_italy.R`).
+
+For each feature, the resulting importance values were pooled across all 20 draws x 100 refits, that is, up to 2000 values per feature, and their median and interquartile range were taken as the point estimate and uncertainty band. Region dummy variables were excluded before ranking the features and the ten remaining features with the highest pooled median importance were retained for plotting, which were then grouped into seven interpretive categories:
+
+- Self-protective behaviours
+- Demographics
+- Health/mental health/wellbeing
+- Perceived illness threat
+- Time
+- Trust in government
+- Vaccination & health literacy
+
+(see R script `10_feature_importance_plot_italy.R`).
+
+### Partial dependency analysis
+
+Partial dependency plots (PDPs) were computed for the top 10 important features identified in the "Feature importance" subsection above, resolved to their underlying variable where a feature was part of a one-hot encoded family, e.g. the several `i11_health_*` dummy columns collapsed to a single `i11_health` group. Vaccination status, HL-COVID, and VL score were always included regardless of their importance ranking since they are theoretically central variables (see lines 15-48 in `11_pdp_italy.R`).
+
+For continuous features, a fixed grid of 51 evenly spaced checkpoints across the observed range was used, the model's prediction was calculated at each checkpoint and the results were joined to draw the curve. For one-hot categorical families, a custom grid was built instead, evaluating one category at a time with every other dummy in that family set to 0.
+
+For computational reasons, only PDPs for vaccination status, HL-COVID, and VL score were computed using the fitted model from every one of the 20 draws. PDPs for the remaining top 10 features were computed using only the first draw's fitted model. When pooling across draws for plotting, continuous feature PDPs were linearly interpolated onto a shared 51 point grid and then $\pm1$ SD was taken across draws at each grid point (see lines 40-41 in `12_pdp_plot_italy.R`); categorical feature PDPs were pooled by averaging predicted probability within each category across draws. Features for which the partial dependency was computed using only the first draw's fitted model, that is, all of the top 10 features besides vaccination status, HL-COVID, and VL score, were plotted as a single line with no cross draw variability band. To reproduce the partial dependency analysis run scripts `11_pdp_italy.R` and `12_pdp_plot_italy.R` in that order.
+
+\FloatBarrier
+
+# Results
+
+This section reports the results of the two analytical steps described in the Methodology: whether the simulated health literacy (HL-COVID) and vaccine literacy (VL) scores predict vaccination status (Section \ref{sec:results-hlvl}), and whether vaccination status, together with the established behavioural and demographic predictors, predicts face mask wearing (Model 1) and general protective behaviour compliance (Model 2) using XGBoost and Random Forest classification models (Section \ref{sec:results-modelperf}). Because simulating HL-COVID and VL introduces sampling uncertainty (see Section \ref{sec:simulating-hl}), all estimates below were pooled across the 20 simulation draws using Rubin's Rules, as set out in Section \ref{sec:pooling}.
+
+\FloatBarrier
+
+## Health Literacy and Vaccine Literacy as Predictors of Vaccination Status {#sec:results-hlvl}
+
+Of the 38,336 respondents in the cleaned dataset, 24,686 had a vaccination status of unvaccinated, one dose, or two doses; these were the respondents used to fit the three proportional odds models described in Section \ref{sec:pooling}. The remaining 13,650 respondents were not asked about their vaccination status, hence, they were filtered out during model fitting (see line 38 in `3_hl_vaccination_italy.R`). This sample size was the same across all 20 draws, since only the simulated HL-COVID and VL values change between draws, not the underlying vaccination status.
+
+Neither HL-COVID nor VL score predicted vaccination status once age and region were accounted for (Table \ref{tab:hlvlor}; see lines 57-71 and 139-162 in `3_hl_vaccination_italy.R`). The pooled odds ratio for HL-COVID was 1.004 (95% CI=0.963-1.046, p=0.866) and for VL was 0.993 (95% CI=0.954-1.034, p=0.731), both are effectively 1 which means that a one point increase in either literacy score is associated with almost no change in the odds of having a higher vaccination status. Age, by contrast, showed a more meaningful change: relative to 18-29 year olds, the 65+ group had an odds ratio of 1.598 (95% CI=1.458-1.752, p<0.002), a roughly 60% increase in odds of a higher vaccination status, a substantially large effect; comparatively, the 45-64 group had a smaller but still significant 1.128 times the odds (95% CI=1.046-1.215, p=0.002); the 30-44 group did not differ much from the reference (OR=0.965, 95% CI=0.889-1.047, p=0.394) so the effect of age is only apparent from 45 onwards. Region contributed a much smaller effect: only North East differed significantly from Centre, with about 10% lower odds of a higher vaccination status (OR=0.897, 95% CI=0.830-0.970, p=0.006); North West, and South and Islands on the other hand had nearly negligible difference relative to the Centre. So in this sample we can see that region matters far less than age for explaining vaccination status.
+
+| Model | Term | OR | 95% CI | p-value |
+|---|---|---|---|---|
+| HL-COVID | Age 30--44 | 0.97 | 0.89, 1.05 | 0.394 |
+| HL-COVID | Age 45--64 | 1.13 | 1.05, 1.22 | 0.0017 |
+| HL-COVID | Age 65+ | 1.60 | 1.46, 1.75 | <0.001 |
+| HL-COVID | hl_covid_num | 1.00 | 0.96, 1.05 | 0.866 |
+| HL-COVID | Region: North East | 0.90 | 0.83, 0.97 | 0.006 |
+| HL-COVID | Region: North West | 0.94 | 0.88, 1.01 | 0.098 |
+| HL-COVID | Region: South & Islands | 0.96 | 0.89, 1.03 | 0.219 |
+| VL | Age 30--44 | 0.96 | 0.89, 1.05 | 0.391 |
+| VL | Age 45--64 | 1.13 | 1.05, 1.22 | 0.0017 |
+| VL | Age 65+ | 1.60 | 1.46, 1.75 | <0.001 |
+| VL | vl_num | 0.99 | 0.95, 1.03 | 0.731 |
+| VL | Region: North East | 0.90 | 0.83, 0.97 | 0.006 |
+| VL | Region: North West | 0.94 | 0.88, 1.01 | 0.097 |
+| VL | Region: South & Islands | 0.96 | 0.89, 1.03 | 0.212 |
+
+Table: Pooled odds ratios from the HL-COVID and VL proportional odds models of vaccination status. \label{tab:hlvlor}
+
+Model fit statistics point the same way. Averaged across the 20 draws, adding HL-COVID (`hl_covid_num`) or VL (`vl_num`) to the base age + region model barely changed the AIC (46919.7 for the base model vs 46920.5 for HL-COVID and 46920.4 for VL), a difference of under one point on a scale in the tens of thousands is negligible, however, it made the BIC worse (46984.7 for the base model vs 46993.5 for both HL-COVID and VL), in other words neither literacy score earns its place in the model once its added complexity is weighed against its essentially absent contribution to fit (Figure \ref{fig:aicbic}; see lines 82-102 and 186-208 in `3_hl_vaccination_italy.R`). The likelihood ratio test reached p<0.05 in only 1 of the 20 draws for both HL-COVID and VL models (Figure \ref{fig:lrtchisq}; see lines 104-122 and 211-240 in `3_hl_vaccination_italy.R`), this could be attributed to noise or chance because a genuine null effect would still produce a significant result in about 1 in every 20 tests by chance alone so this result is to be expected if HL-COVID and VL truly had no effect on vaccination status. Figure \ref{fig:orforest} shows the pooled odds ratios and 95% confidence intervals for every term in both models on a single forest plot (see lines 243-295 in `3_hl_vaccination_italy.R`).
+
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.85\textwidth]{C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/figures/plot1_aic_bic.png}
+\caption{AIC and BIC of the base (age + region), HL-COVID, and VL models across the 20 draws.}
+\label{fig:aicbic}
+\end{figure}
+
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.85\textwidth]{C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/figures/plot2_lrt_chisq.png}
+\caption{Likelihood ratio test chi-squared statistics for the HL-COVID and VL models vs. the base model, across the 20 draws.}
+\label{fig:lrtchisq}
+\end{figure}
+
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.85\textwidth]{C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/figures/plot3_pooled_OR_forest.png}
+\caption{Pooled odds ratios and 95\% confidence intervals for all terms in the HL-COVID and VL models.}
+\label{fig:orforest}
+\end{figure}
+
+\FloatBarrier
+
+## Model Performance for Face Mask Wearing and Protective Behaviour Compliance with the Addition of Vaccination as a Predictor {#sec:results-modelperf}
+
+Table \ref{tab:cv} reports fivefold cross-validation results for Model 1 (face mask wearing) and Model 2 (general protective health behaviour compliance), pooled across the 20 draws (see lines 19-93 in `7_collect_results_italy.R`). Table \ref{tab:test} reports the corresponding independent test set results (see lines 226-265 in `9_fit_and_test_models_italy.R`).
+
+| Model | Algorithm | AUC | Precision | Recall | Accuracy | F1 |
+|---|---|---|---|---|---|---|
+| Model 1 (Face Mask) | XGBoost | 0.817 (0.007) | 0.983 (0.001) | 0.822 (0.006) | 0.816 (0.005) | 0.895 (0.003) |
+| Model 1 (Face Mask) | Random Forest | 0.811 (0.008) | 0.981 (0.001) | 0.865 (0.003) | 0.854 (0.003) | 0.919 (0.002) |
+| Model 2 (Protective Behaviour) | XGBoost | 0.840 (0.002) | 0.969 (0.0004) | 0.779 (0.003) | 0.775 (0.003) | 0.863 (0.002) |
+| Model 2 (Protective Behaviour) | Random Forest | 0.833 (0.001) | 0.963 (0.001) | 0.817 (0.002) | 0.805 (0.002) | 0.884 (0.001) |
+
+Table: Fivefold cross-validation results for Models 1 and 2, pooled across 20 draws, with standard deviation. \label{tab:cv}
+
+| Model | Algorithm | AUC | Precision | Recall | Accuracy | F1 |
+|---|---|---|---|---|---|---|
+| Model 1 (Face Mask) | XGBoost | 0.812 [0.797, 0.826] | 0.986 [0.984, 0.987] | 0.820 [0.808, 0.831] | 0.815 [0.804, 0.825] | 0.895 [0.888, 0.902] |
+| Model 1 (Face Mask) | Random Forest | 0.805 [0.790, 0.820] | 0.983 [0.981, 0.984] | 0.860 [0.854, 0.866] | 0.851 [0.845, 0.856] | 0.917 [0.914, 0.921] |
+| Model 2 (Protective Behaviour) | XGBoost | 0.844 [0.840, 0.848] | 0.972 [0.971, 0.973] | 0.774 [0.768, 0.780] | 0.772 [0.766, 0.777] | 0.862 [0.858, 0.865] |
+| Model 2 (Protective Behaviour) | Random Forest | 0.836 [0.834, 0.839] | 0.967 [0.966, 0.968] | 0.806 [0.801, 0.811] | 0.796 [0.792, 0.801] | 0.879 [0.876, 0.882] |
+
+Table: Test set metrics for Models 1 and 2, pooled across 20 draws using Rubin's Rules. Values are mean [95% CI]. \label{tab:test}
+
+AUC ranges from 0.5, which equates to random guessing, to 1.0, which means perfect separation of compliant respondents from non-compliant respondents. The values here, 0.805-0.844 (Table \ref{tab:test}) across both outcomes and both algorithms, are clearly better than chance. And with their standard deviation being above 0.7, it can be stated that these models separate compliant from non-compliant respondents well enough that it can't be attributed to pure random guess, however, this discrimination is not at the highest level possible.
+
+For Model 1 in the test set (Table \ref{tab:test}), XGBoost had the slightly higher AUC and Precision than Random Forest but Random Forest had the higher recall, accuracy, and F1. Neither algorithm could be considered better than the other, XGBoost separates the two classes more cleanly overall but is slightly less likely to wrongly flag a non-compliant respondent as compliant, while Random Forest is more likely to correctly catch respondents who are genuinely compliant but at a small cost to precision. Model 2 in the test set (Table \ref{tab:test}) shows the same pattern, where XGBoost has comparatively better AUC and Precision whilst Random Forest had better recall, accuracy, and F1.
+
+The test set metrics (Table \ref{tab:test}) also show that Precision was high for every model, which means that when a model predicts someone is compliant it is usually right. Recall was more moderate which tells us that the models still miss a meaningful share of people who are actually compliant. This gap between precision and recall is expected here since both outcomes are heavily imbalanced (see Section \ref{sec:tuning}) and the rarer, non-compliant class was oversampled during training. This oversampling trades away a little accuracy on the majority class in exchange for better sensitivity to the minority class.
+
+Cross-validation and test set results matched closely for every model, as we can see in both Table \ref{tab:cv} and Table \ref{tab:test}, so we can assume that there is no sign of overfitting to the training folds. The 95% confidence intervals are also narrow, meaning every algorithm's pooled estimate is stable across the 20 HL-COVID/VL draws rather than a one-off result from a single draw.
+
+\FloatBarrier
+
+## Feature Importance {#sec:results-featimp}
+
+Figure \ref{fig:fimp1} shows the ten most important features, region dummy variables excluded, for Model 1 and Figure \ref{fig:fimp2} shows the equivalent results for Model 2, each comparing Random Forest (panel a) and XGBoost (panel b), pooled across the 20 draws (see lines 130-173 in `10_feature_importance_plot_italy.R`).
+
+For Model 1, both algorithms rank "Very Willing To Isolate" and "Isolate If Unwell (Yes)" as the two most important features by a wide margin, meaning self-isolation intentions carry far more predictive weight than any other single variable in the model. These are followed by a second tier of smaller, more evenly sized contributors in both Random Forest and XGBoost: age, household size, gender, perceived severity, and survey week. Vaccination status, specifically the double dose category, appears near the end of the top ten for both algorithms. So vaccination status does carry some independent predictive signal for face mask wearing, but a modest one relative to all the other predictors. Neither HL-COVID nor VL appears amongst the top ten important features for either algorithm, which means that neither literacy score contributes meaningfully to predicting who wears a face mask in this model.
+
+For Model 2, the same two isolation items remain prominent, but perceived severity, week number, and non-household contacts rank more highly than in Model 1. XGBoost ranks perceived severity as its single most important feature, ahead of the isolation items and week number even though they are the second most prominent predictors. This suggests that beliefs about how serious COVID-19 is carry more weight for general protective health behaviour than for face mask wearing specifically. Vaccination status, HL-COVID, and VL do not appear among the top ten features for either algorithm in Model 2 at all, indicating that none of the three variables meaningfully predicts general protective behaviour compliance once the established predictors are already in the model.
+
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.9\textwidth]{C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/plots/feature_importance/italy_mean_feature_importance_model_1_both_models.png}
+\caption{Median feature importance for the top ten features (excluding region), pooled across 20 draws, for Model 1 (face mask wearing): (a) random forest, (b) XGBoost.}
+\label{fig:fimp1}
+\end{figure}
+
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.9\textwidth]{C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/plots/feature_importance/italy_mean_feature_importance_model_2_both_models.png}
+\caption{Median feature importance for the top ten features (excluding region), pooled across 20 draws, for Model 2 (general protective behaviour): (a) random forest, (b) XGBoost.}
+\label{fig:fimp2}
+\end{figure}
+
+\FloatBarrier
+
+## Partial Dependency: Vaccination Status, Health Literacy, and Vaccine Literacy {#sec:results-pdp}
+
+Partial dependency was computed for vaccination status, HL-COVID, and VL score, alongside the top ten features. Feature importance (Section \ref{sec:results-featimp}) only ranks these variables against the others but does not show the size or direction of their association with predicted compliance, which is what partial dependency adds. Since vaccination status, HL-COVID, and VL are the central variables of this project, all three were examined regardless of where they fell in the importance ranking. Partial dependency plots for the remaining top ranked features are provided in the [GitHub Repository](https://github.com/Mozzie97/Data_Science_Research_Project)
+
+For vaccination status, Random Forest showed clearer distinction between vaccination categories than XGBoost (Figures \ref{fig:pdpvax1rf}-\ref{fig:pdpvax2xgb}; see lines 60-121 in `12_pdp_plot_italy.R`, which produces all twelve pooled PDP figures in this section) for both Model 1 and Model 2: For Model 1, predicted probability of face mask compliance is highest for the second dose group and lowest for the "other/missing" group; for Model 2, the second dose group falls below the unvaccinated reference category whilst the one dose group shows the highest predicted probability for general protective behaviour compliance. XGBoost shows a flatter pattern for both models: a single step between the unvaccinated reference and all three other categories, which are themselves close to indistinguishable from one another. In each of these four plots, the $\pm1$ SD error bars at each category are wide relative to the differences between categories, meaning the apparent gaps between vaccination status groups are similar in size to the uncertainty introduced by the HL-COVID/VL simulation itself. Combined with vaccination status' modest ranking in Section \ref{sec:results-featimp}, this points to a real but small and inconsistent association between vaccination and predicted compliance, rather than a strong reliable effect.
+
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.7\textwidth]{C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/plots/pdp_italy/italy_model_1_rf_pdp_vaccination_status_pooled.png}
+\caption{Pooled partial dependence of predicted probability on vaccination status, across 20 draws. (a) Model 1 -- Random Forest.}
+\label{fig:pdpvax1rf}
+\end{figure}
+
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.7\textwidth]{C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/plots/pdp_italy/italy_model_1_xgboost_pdp_vaccination_status_pooled.png}
+\caption{Pooled partial dependence of predicted probability on vaccination status, across 20 draws. (b) Model 1 -- XGBoost.}
+\label{fig:pdpvax1xgb}
+\end{figure}
+
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.7\textwidth]{C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/plots/pdp_italy/italy_model_2_rf_pdp_vaccination_status_pooled.png}
+\caption{Pooled partial dependence of predicted probability on vaccination status, across 20 draws. (c) Model 2 -- Random Forest.}
+\label{fig:pdpvax2rf}
+\end{figure}
+
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.7\textwidth]{C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/plots/pdp_italy/italy_model_2_xgboost_pdp_vaccination_status_pooled.png}
+\caption{Pooled partial dependence of predicted probability on vaccination status, across 20 draws. (d) Model 2 -- XGBoost.}
+\label{fig:pdpvax2xgb}
+\end{figure}
+
+For HL-COVID score (Figures \ref{fig:pdphl1rf}-\ref{fig:pdphl2xgb}) and VL score (Figures \ref{fig:pdpvl1rf}-\ref{fig:pdpvl2xgb}), respondents simulated with Limited, Sufficient, and Excellent/Good literacy have very similar predicted probability of compliance, for both models and both algorithms, that is, there is no meaningful separation between the three literacy categories. The $\pm1$ SD band for each category overlaps almost completely with the others, so even the very small differences that do appear cannot be distinguished from noise. In conjunction with HL-COVID and VL being absent from the top ten features (Section \ref{sec:results-featimp}) and their non-significant association with vaccination status (Section \ref{sec:results-hlvl}), we can come to the conclusion that health literacy and vaccine literacy show no meaningful relationship with vaccination status, face mask wearing, or general protective behaviour compliance.
+
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.7\textwidth]{C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/plots/pdp_italy/italy_model_1_rf_pdp_hl_covid_num_pooled.png}
+\caption{Pooled partial dependence of predicted probability on HL-COVID score, across 20 draws. (a) Model 1 -- Random Forest.}
+\label{fig:pdphl1rf}
+\end{figure}
+
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.7\textwidth]{C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/plots/pdp_italy/italy_model_1_xgboost_pdp_hl_covid_num_pooled.png}
+\caption{Pooled partial dependence of predicted probability on HL-COVID score, across 20 draws. (b) Model 1 -- XGBoost.}
+\label{fig:pdphl1xgb}
+\end{figure}
+
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.7\textwidth]{C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/plots/pdp_italy/italy_model_2_rf_pdp_hl_covid_num_pooled.png}
+\caption{Pooled partial dependence of predicted probability on HL-COVID score, across 20 draws. (c) Model 2 -- Random Forest.}
+\label{fig:pdphl2rf}
+\end{figure}
+
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.7\textwidth]{C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/plots/pdp_italy/italy_model_2_xgboost_pdp_hl_covid_num_pooled.png}
+\caption{Pooled partial dependence of predicted probability on HL-COVID score, across 20 draws. (d) Model 2 -- XGBoost.}
+\label{fig:pdphl2xgb}
+\end{figure}
+
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.7\textwidth]{C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/plots/pdp_italy/italy_model_1_rf_pdp_vl_num_pooled.png}
+\caption{Pooled partial dependence of predicted probability on VL score, across 20 draws. (a) Model 1 -- Random Forest.}
+\label{fig:pdpvl1rf}
+\end{figure}
+
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.7\textwidth]{C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/plots/pdp_italy/italy_model_1_xgboost_pdp_vl_num_pooled.png}
+\caption{Pooled partial dependence of predicted probability on VL score, across 20 draws. (b) Model 1 -- XGBoost.}
+\label{fig:pdpvl1xgb}
+\end{figure}
+
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.7\textwidth]{C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/plots/pdp_italy/italy_model_2_rf_pdp_vl_num_pooled.png}
+\caption{Pooled partial dependence of predicted probability on VL score, across 20 draws. (c) Model 2 -- Random Forest.}
+\label{fig:pdpvl2rf}
+\end{figure}
+
+\begin{figure}[ht!]
+\centering
+\includegraphics[width=0.7\textwidth]{C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/plots/pdp_italy/italy_model_2_xgboost_pdp_vl_num_pooled.png}
+\caption{Pooled partial dependence of predicted probability on VL score, across 20 draws. (d) Model 2 -- XGBoost.}
+\label{fig:pdpvl2xgb}
+\end{figure}
+
+\FloatBarrier
+
+\newpage
+
+All referenced code chunks addressed in both the Methodology section and the Results section, enclosed in brackets, can be found in the Statistical appendix section for further exploration. Furthermore, all relevant code for this project can also be found in the [GitHub Research Project Repository](https://github.com/Mozzie97/Data_Science_Research_Project).
+
+\FloatBarrier
+
+# Discussion
+
+This report set out to investigate two linked questions for Italy: first, whether health literacy influences the uptake of COVID-19 vaccines, and second, whether vaccination status, together with the same behavioural and demographic predictors seen in Ryan et al.'s (2025) work, influences adherence to face mask wearing and general protective health behaviour. This builds on the earlier reproduction of Ryan et al.'s (2025) Australian machine learning pipeline, adapting it to the Italian YouGov COVID-19 Behaviour Tracker (@jones_2020) data and extending it with two new elements: individual level health literacy (HL-COVID) and vaccine literacy (VL) scores simulated from HLS19 subgroup probabilities presented by Rosano et al. (2022) and Cadeddu et al. (2022); and vaccination status as an additional predictor of protective behaviour.
+
+Two analytical steps were carried out to address these questions. Step 1 fitted proportional odds logistic regression models across 20 simulated draws of HL-COVID and VL, pooled using Rubin's Rules, to test whether these literacy scores predicted vaccination status after accounting for age and region. Step 2 applied XGBoost and Random Forest classifiers, also pooled across the same 20 draws, to predict face mask wearing (Model 1) and general protective behaviour compliance (Model 2), incorporating vaccination status, HL-COVID, and VL alongside the same predictors seen in Ryan et al.'s (2025) work. Because the majority of Italy's cleaned analytical sample fell within the post-mandate period, the before/after mandate comparison used for Australia was not possible here, and each Italian model was instead fitted once on the full post-mandate sample.
+
+The results do not support the project's central hypothesis that health literacy influences vaccination status, or that vaccination status is a strong driver of face mask wearing or general protective behaviour in Italy. Neither HL-COVID nor VL predicted vaccination status once age and region were controlled for. The pooled odds ratios for both were close to 1, and adding either literacy score worsened model fit by BIC despite a negligible change in AIC. Age was the only meaningful driver of vaccination status, particularly among respondents 45 and older, while region contributed little. This null result contrasts with the positive associations between health literacy and vaccination acceptance reported for the EU broadly (@vasileia2025). This result also contrasts the strong association between high health literacy and low vaccine hesitancy rates among Italian anticoagulated patients, provided that the patient health engagement is high (@magon2021). A likely explanation is methodological rather than substantive. Because the data that was used for health literacy were subgroup level probabilities rather than individual scores, HL-COVID and VL had to be simulated from age and region distributions rather than measured directly for each respondent, which smooths away individual level variation unrelated to age or region and may understate a real, more localized effect.
+
+The Step 2 models classified face mask wearing and general protective behaviour reasonably well, with pooled test AUCs between 0.805 and 0.844, comfortably above chance. However, vaccination status ranked only modestly among the top ten predictors for face mask wearing and did not appear at all among the top ten for general protective behaviour, while HL-COVID and VL were absent from both. Willingness to self-isolate was consistently the dominant predictor for both outcomes, while perceived severity was the dominant predictor for only general protective health behaviour. Partial dependency plots reinforced this picture: differences in predicted compliance across vaccination categories were small and inconsistent between Random Forest and XGBoost, with uncertainty bands comparable in size to the differences themselves, while HL-COVID and VL showed essentially flat relationships with predicted compliance throughout.
+
+Several limitations temper the interpretation of these results. HL-COVID and VL were simulated from national subgroup probabilities rather than measured for individual respondents, which limits how confidently the null result can be generalized to true individual level health literacy. The dataset's cross-sectional design and the loss of a pre/post mandate comparison for Italy further restrict causal interpretation of the relationship between vaccination and behaviour. Feature importance was also assessed with 100 refits per draw rather than 10,000, which was a necessary computational compromise. Overall, this Italian analysis successfully extends the validated Ryan et al. (2025) pipeline to a new country and a new predictor, but points toward self-isolation intentions and demographic factors, rather than health literacy or vaccination status, as the more reliable predictors of protective behaviour in this dataset.
+
+# Acknowledgements
+
+I acknowledge that AI have been used to debug certain codes and the R markdown file as it wasn't knitting successfully; understanding codes, methods, and concepts; spelling checks, and finding synonyms of phrases and words. AI has also been used to help with ideas, but not been used with research paper generation or summarization of the papers. They have also helped with the set up of GitHub. 
+
+# References
+
+<div id="refs"></div>
+
+\newpage
+
+# Statistical appendix
+
+This appendix contains the R code excerpts referenced throughout the Methodology and Results sections, organised by script, followed by a dictionary of the variables used throughout the analysis. The code below is displayed only, not executed, since the underlying scripts read from and write to local file paths, take a long time to run in full (particularly the hyperparameter tuning and permutation importance steps), and depend on outputs from earlier scripts in the pipeline. The actual results reported in the Methodology and Results sections were produced by running the full scripts (available in the project's [Github repository](https://github.com/Mozzie97/Data_Science_Research_Project)) end to end.
+
+## Appendix A: R Script Excerpts Referenced in the Report
+
+### `1_clean_dataset_italy.R`
+
+This script performs the initial data cleaning described in the "Data cleaning and missing data" and "Outcome and predictor construction" subsections of the Methodology.
+
+**Household size recoding** (lines 16-21): converts `household_size` to numeric, mapping "8 or more" to 8 and treating "Prefer not to say"/"Don't know" as missing.
+
+```r
+household_convert <- function(size_str) {
+  out <- suppressWarnings(as.numeric(size_str))
+  out[size_str == "8 or more"] <- 8
+  out[size_str %in% c("Prefer not to say", "Don't know")] <- NA_real_
+  out
+}
+```
+
+**Vaccination status recoding** (lines 31-42): maps the raw survey response to the four-category `vaccination_status` variable (0 = unvaccinated, 1 = one dose, 2 = two doses, 3 = any other/missing response).
+
+```r
+vac_map <- c(
+  "No, neither"    = 0L,
+  "Yes, one dose"  = 1L,
+  "Yes, two doses" = 2L
+)
+
+if ("vac" %in% names(df)) {
+  df$vaccination_status <- vac_map[as.character(df$vac)]
+  df$vaccination_status[is.na(df$vaccination_status)] <- 3L
+  df$vaccination_status <- as.integer(df$vaccination_status)
+  df$vac <- NULL
+}
+```
+
+**Missing-value threshold** (lines 45-55): drops any variable with more than 10,854 missing values (the 20% threshold applied to the 54,270-respondent raw sample).
+
+```r
+thresh_value <- 10854
+
+missing_value_df <- read_csv("C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/data/missing_value_counts_italy.csv")
+
+columns_to_drop <- missing_value_df %>%
+  filter(`Missing Value Count` > thresh_value) %>%
+  pull(`Variable Name`)
+
+columns_to_drop <- setdiff(columns_to_drop, c("vac", "vaccination_status"))
+
+df <- df %>% dplyr::select(-any_of(columns_to_drop))
+```
+
+**PHQ-4 and comorbidity "N/A" recoding** (lines 59-78): recodes PHQ-4 responses before 1 May 2020 and comorbidity (`d1_health`) responses from 1 March 2022 onward to "N/A" (since these items were not yet, or no longer, part of the survey instrument), rather than leaving them as ordinary missing values, before applying listwise deletion.
+
+```r
+phq_cols <- paste0("PHQ4_", 1:4)
+d1_cols  <- c(paste0("d1_health_", 1:13), paste0("d1_health_", 98:99))
+
+fill_na_in_mask <- function(x, mask) {
+  x <- as.character(x)
+  x[mask & is.na(x)] <- "N/A"
+  x
+}
+
+phq_mask <- df$endtime < as.Date("2020-05-01")
+d1_mask  <- df$endtime >= as.Date("2022-03-01")
+
+for (col in phq_cols) {
+  if (col %in% names(df)) df[[col]] <- fill_na_in_mask(df[[col]], phq_mask)
+}
+for (col in d1_cols) {
+  if (col %in% names(df)) df[[col]] <- fill_na_in_mask(df[[col]], d1_mask)
+}
+
+df <- df %>% dplyr::filter(complete.cases(.))
+```
+
+**Outcome construction** (lines 96-125): builds the face-mask behaviour score (Model 1 outcome) from 4 items and the general protective-behaviour score (Model 2 outcome) from all 17 items, each binarized at a row-median threshold of 4.
+
+```r
+frequency_dict <- c(
+  "Always"     = 5,
+  "Frequently" = 4,
+  "Sometimes"  = 3,
+  "Rarely"     = 2,
+  "Not at all" = 1
+)
+
+i12_cols <- grep("^i12_health_", names(df), value = TRUE)
+for (col in i12_cols) {
+  df[[col]] <- as.integer(frequency_dict[as.character(df[[col]])])
+}
+
+# Facemask scale: median across the 4 mask related items
+mask_items <- c("i12_health_1", "i12_health_22", "i12_health_23", "i12_health_25")
+df$face_mask_behaviour_scale <- rowMedians(
+  as.matrix(df[, mask_items]), na.rm = TRUE
+)
+df$face_mask_behaviour_binary <- ifelse(df$face_mask_behaviour_scale >= 4, "Yes", "No")
+
+protective_behaviour_cols <- grep("^i12_", names(df), value = TRUE)
+df$protective_behaviour_scale <- rowMedians(
+  as.matrix(df[, protective_behaviour_cols]), na.rm = TRUE
+)
+df$protective_behaviour_binary <- ifelse(df$protective_behaviour_scale >= 4, "Yes", "No")
+
+protective_behaviour_nomask_cols <- setdiff(protective_behaviour_cols, mask_items)
+df$protective_behaviour_nomask_scale <- rowMedians(
+  as.matrix(df[, protective_behaviour_nomask_cols]), na.rm = TRUE
+)
+```
+
+**Comorbidity derivation** (lines 129-140): builds `d1_comorbidities` from the "None of these" (`d1_health_99`) and "Prefer not to say" (`d1_health_98`) checkbox items defined at line 60 above (default "Yes", overridden to "No" if "None of these" was selected, or "Prefer_not_to_say" if that option was selected).
+
+```r
+df$d1_comorbidities <- "Yes"
+if ("d1_health_99" %in% names(df)) {
+  df$d1_comorbidities[df$d1_health_99 == "Yes"] <- "No"
+  df$d1_comorbidities[df$d1_health_99 == "N/A"] <- "NA"
+}
+if ("d1_health_98" %in% names(df)) {
+  df$d1_comorbidities[df$d1_health_98 == "Yes"] <- "Prefer_not_to_say"
+}
+
+d1_cols_present <- grep("^d1_", names(df), value = TRUE)
+d1_cols_to_drop <- setdiff(d1_cols_present, "d1_comorbidities")
+df <- df %>% dplyr::select(-any_of(d1_cols_to_drop))
+```
+
+**Fortnight variable** (lines 142-143): computes `week_number` as the number of complete 14-day blocks since the earliest surviving response date.
+
+```r
+start_date <- min(df$endtime, na.rm = TRUE)
+df$week_number <- as.integer(as.numeric(df$endtime - start_date) %/% 14) + 1L
+```
+
+### `1b_simulate_hl_italy.R`
+
+This script simulates individual-level HL-COVID and VL scores from the HLS19 age-group and region subgroup probabilities. The excerpt below (lines 80-90) is the normalisation step: the age-group and region probabilities for each HL-COVID/VL category are averaged, then divided by their row total so the three category probabilities sum to exactly 1 before being used to draw each respondent's simulated category.
+
+```r
+# Average age + region then normalise each row so probabilities sum to 1.
+normalise <- function(a, b, c) {
+  s <- a + b + c
+  list(p1 = a / s, p2 = b / s, p3 = c / s)
+}
+
+hl_probs <- normalise(
+  (df$hl_age_exc + df$hl_reg_exc) / 2,
+  (df$hl_age_suf + df$hl_reg_suf) / 2,
+  (df$hl_age_lim + df$hl_reg_lim) / 2
+)
+```
+
+### `3_hl_vaccination_italy.R`
+
+This script fits the Step 1 proportional-odds models linking HL-COVID and VL to vaccination status, and produces Table 1 and Figures 1-3.
+
+**Data loading and sample filter** (lines 33-53): loads each draw's data, restricts the sample to respondents with a known vaccination status (0/1/2), and constructs the `age_group` and `region_hls19` factors used in the models.
+
+```r
+  df <- read_csv(
+    file.path(data_dir,
+              sprintf("cleaned_data_italy_hl_draw_%02d.csv", draw)),
+    na = character(), show_col_types = FALSE
+  ) %>%
+    dplyr::filter(vaccination_status %in% c(0L, 1L, 2L)) %>%
+    dplyr::mutate(
+      vax_ordered  = factor(vaccination_status,
+                            levels = c(0L, 1L, 2L), ordered = TRUE),
+      age_group    = case_when(
+        age >= 18 & age <= 29 ~ "18-29",
+        age >= 30 & age <= 44 ~ "30-44",
+        age >= 45 & age <= 64 ~ "45-64",
+        age >= 65             ~ "65+",
+        TRUE                  ~ NA_character_
+      ),
+      age_group    = factor(age_group,
+                            levels = c("18-29", "30-44", "45-64", "65+")),
+      region_hls19 = factor(region_hls19)
+    ) %>%
+    dplyr::filter(!is.na(age_group), !is.na(region_hls19))
+```
+
+**The three proportional-odds models** (lines 57-71): the Base, HL-COVID, and VL models compared per draw.
+
+```r
+  fit_base <- tryCatch(
+    polr(vax_ordered ~ age_group + region_hls19,
+         data = df, Hess = TRUE, method = "logistic"),
+    error = function(e) { cat("  WARNING: base failed\n"); NULL }
+  )
+  fit_hl <- tryCatch(
+    polr(vax_ordered ~ hl_covid_num + age_group + region_hls19,
+         data = df, Hess = TRUE, method = "logistic"),
+    error = function(e) { cat("  WARNING: HL failed\n"); NULL }
+  )
+  fit_vl <- tryCatch(
+    polr(vax_ordered ~ vl_num + age_group + region_hls19,
+         data = df, Hess = TRUE, method = "logistic"),
+    error = function(e) { cat("  WARNING: VL failed\n"); NULL }
+  )
+```
+
+**AIC/BIC construction** (lines 82-102): records the number of parameters, AIC, and BIC for all three models in each draw.
+
+```r
+  aic_bic_rows[[draw]] <- tibble(
+    draw     = draw,
+    model    = c("Base (age + region)",
+                 "HL-COVID (+ hl_covid_num)",
+                 "VL (+ vl_num)"),
+    n_params = c(
+      if (!is.null(fit_base)) length(coef(fit_base)) + length(fit_base$zeta) else NA_integer_,
+      if (!is.null(fit_hl))   length(coef(fit_hl))   + length(fit_hl$zeta)   else NA_integer_,
+      if (!is.null(fit_vl))   length(coef(fit_vl))   + length(fit_vl$zeta)   else NA_integer_
+    ),
+    AIC = c(
+      if (!is.null(fit_base)) AIC(fit_base) else NA_real_,
+      if (!is.null(fit_hl))   AIC(fit_hl)   else NA_real_,
+      if (!is.null(fit_vl))   AIC(fit_vl)   else NA_real_
+    ),
+    BIC = c(
+      if (!is.null(fit_base)) BIC(fit_base) else NA_real_,
+      if (!is.null(fit_hl))   BIC(fit_hl)   else NA_real_,
+      if (!is.null(fit_vl))   BIC(fit_vl)   else NA_real_
+    )
+  )
+```
+
+**Likelihood ratio test** (lines 104-122): compares each augmented model (HL-COVID or VL) against the base model within each draw.
+
+```r
+  make_lrt_row <- function(fit_full, label) {
+    if (is.null(fit_base) || is.null(fit_full)) {
+      return(tibble(draw = draw, hl_measure = label,
+                    logLik_base = NA_real_, logLik_full = NA_real_,
+                    chi_sq = NA_real_, df = NA_integer_, p_value = NA_real_))
+    }
+    ll_base <- as.numeric(logLik(fit_base))
+    ll_full <- as.numeric(logLik(fit_full))
+    chi_sq  <- 2 * (ll_full - ll_base)
+    tibble(draw = draw, hl_measure = label,
+           logLik_base = ll_base, logLik_full = ll_full,
+           chi_sq = chi_sq, df = 1L,
+           p_value = pchisq(chi_sq, df = 1L, lower.tail = FALSE))
+  }
+  
+  lrt_rows[[draw]] <- bind_rows(
+    make_lrt_row(fit_hl, "HL_COVID"),
+    make_lrt_row(fit_vl, "VL")
+  )
+```
+
+**Rubin's Rules pooling** (lines 139-162): pools the HL-COVID and VL coefficients across the 20 draws into the combined estimate, pooled standard error, z-statistic, p-value, and odds ratio with 95% CI reported in Table 1.
+
+```r
+pooled <- draw_results %>%
+  dplyr::group_by(hl_measure, term) %>%
+  dplyr::summarise(
+    n_draws = n(),
+    Q_bar   = mean(estimate),
+    U_bar   = mean(std_error^2),
+    B       = var(estimate),
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(
+    T_total    = U_bar + (1 + 1 / M) * B,
+    pooled_se  = sqrt(T_total),
+    z_stat     = Q_bar / pooled_se,
+    p_value    = 2 * pnorm(abs(z_stat), lower.tail = FALSE),
+    OR         = exp(Q_bar),
+    OR_lower95 = exp(Q_bar - 1.96 * pooled_se),
+    OR_upper95 = exp(Q_bar + 1.96 * pooled_se)
+  ) %>%
+  dplyr::select(hl_measure, term, OR, OR_lower95, OR_upper95,
+                Q_bar, pooled_se, z_stat, p_value, n_draws)
+
+write_csv(pooled,
+          file.path(results_dir, "3_hl_vaccination_pooled_results.csv"))
+cat(sprintf("Pooled results: %d rows\n\n", nrow(pooled)))
+```
+
+**Figure 1** (lines 186-208): AIC/BIC plot across the 20 draws.
+
+```r
+p1 <- ggplot(aic_long, aes(x = draw, y = value,
+                           colour = model, linetype = model)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 2) +
+  facet_wrap(~ criterion, scales = "free_y", ncol = 2) +
+  scale_colour_manual(values = model_colours, name = "Model") +
+  scale_linetype_manual(
+    values = c("Base (age + region)"       = "dashed",
+               "HL-COVID (+ hl_covid_num)" = "solid",
+               "VL (+ vl_num)"             = "solid"),
+    name = "Model"
+  ) +
+  scale_x_continuous(breaks = 1:20) +
+  labs(
+    title    = "Plot 1 — AIC and BIC across 20 simulation draws",
+    subtitle = "Lower = better fit. Base model has one fewer parameter than the HL and VL models.",
+    x = "Draw", y = "Information criterion"
+  ) +
+  base_theme +
+  guides(colour = guide_legend(nrow = 2), linetype = guide_legend(nrow = 2))
+
+ggsave(file.path(figures_dir, "plot1_aic_bic.png"),
+       plot = p1, width = 10, height = 5, dpi = 150)
+```
+
+**Figure 2** (lines 211-240): likelihood ratio test chi-squared statistic plot across the 20 draws.
+
+```r
+chi2_crit <- qchisq(0.95, df = 1)   # 3.841
+
+p2 <- ggplot(lrt_df,
+             aes(x = draw, y = chi_sq,
+                 colour = hl_measure, shape = p_value < 0.05)) +
+  geom_hline(yintercept = chi2_crit,
+             linetype = "dashed", colour = "red", linewidth = 0.7) +
+  geom_line(linewidth = 0.7) +
+  geom_point(size = 3) +
+  annotate("text", x = 0.4, y = chi2_crit + 0.3,
+           label = sprintf("Critical value = %.3f (df = 1, \u03b1 = 0.05)",
+                           chi2_crit),
+           colour = "red", size = 3, hjust = 0) +
+  scale_colour_manual(values = hl_colours, name = "HL measure") +
+  scale_shape_manual(
+    values = c("TRUE" = 17, "FALSE" = 16),
+    labels = c("TRUE" = "p < 0.05", "FALSE" = "p \u2265 0.05"),
+    name   = "Significance"
+  ) +
+  scale_x_continuous(breaks = 1:20) +
+  scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.12))) +
+  labs(
+    title    = "Plot 2 — Likelihood Ratio Test: chi-squared statistic across 20 draws",
+    subtitle = "H\u2080: adding HL does not improve fit over age + region. Triangles = significant at 5%.",
+    x = "Draw", y = "Chi-squared statistic (df = 1)"
+  ) +
+  base_theme
+
+ggsave(file.path(figures_dir, "plot2_lrt_chisq.png"),
+       plot = p2, width = 10, height = 5, dpi = 150)
+```
+
+**Figure 3** (lines 243-295): pooled odds ratio forest plot for all terms in the HL-COVID and VL models.
+
+```r
+pooled_coef <- pooled %>%
+  dplyr::filter(!grepl("\\|", term)) %>%
+  dplyr::mutate(
+    term_label = case_when(
+      term == "hl_covid_num"                  ~ "HL-COVID score",
+      term == "vl_num"                        ~ "VL score",
+      term == "age_group30-44"                ~ "Age 30-44 vs 18-29",
+      term == "age_group45-64"                ~ "Age 45-64 vs 18-29",
+      term == "age_group65+"                  ~ "Age 65+ vs 18-29",
+      term == "region_hls19North East"        ~ "Region: North East vs Centre",
+      term == "region_hls19North West"        ~ "Region: North West vs Centre",
+      term == "region_hls19South and Islands" ~ "Region: South & Islands vs Centre",
+      TRUE ~ term
+    ),
+    sort_key = case_when(
+      grepl("HL-COVID score|VL score", term_label) ~ 1,
+      grepl("Age",                     term_label) ~ 2,
+      grepl("Region",                  term_label) ~ 3,
+      TRUE ~ 4
+    ),
+    significant = p_value < 0.05
+  ) %>%
+  dplyr::arrange(sort_key, term_label) %>%
+  dplyr::mutate(
+    term_label = factor(term_label, levels = rev(unique(term_label)))
+  )
+
+p3 <- ggplot(pooled_coef,
+             aes(x = OR, y = term_label,
+                 colour = hl_measure, shape = significant)) +
+  geom_vline(xintercept = 1, linetype = "dashed",
+             colour = "grey50", linewidth = 0.7) +
+  geom_errorbarh(aes(xmin = OR_lower95, xmax = OR_upper95),
+                 height = 0.25, linewidth = 0.7,
+                 position = position_dodge(width = 0.5)) +
+  geom_point(size = 3, position = position_dodge(width = 0.5)) +
+  scale_colour_manual(values = hl_colours, name = "HL measure") +
+  scale_shape_manual(
+    values = c("TRUE" = 17, "FALSE" = 16),
+    labels = c("TRUE" = "p < 0.05", "FALSE" = "p \u2265 0.05"),
+    name   = "Significance"
+  ) +
+  scale_x_log10() +
+  labs(
+    title    = "Plot 3 — Pooled odds ratios and 95% confidence intervals",
+    subtitle = "Rubin's Rules pooling across 20 draws. OR > 1: higher HL associated with more vaccination. Log scale.",
+    x = "Odds ratio (log scale)", y = NULL
+  ) +
+  base_theme +
+  theme(panel.grid.major.y = element_line(colour = "grey90"))
+
+ggsave(file.path(figures_dir, "plot3_pooled_OR_forest.png"),
+       plot = p3, width = 10, height = 6, dpi = 150)
+```
+
+### `4_split_data_italy.R`
+
+This script performs the 80/20 train/test split described in the "Train/Test splitting" subsection of the Methodology.
+
+**Split parameters** (lines 4-7):
+
+```r
+N_DRAWS   <- 20
+data_dir  <- "C:/Users/Asus/Adelaide University/Anthony Mays - Covid_Siddika_M/New Code/data"
+test_size <- 0.2
+set.seed(20240417)   # same seed as the Australian pipeline for comparability
+```
+
+**Split function** (lines 14-44): applies a draw-specific random seed (`20240417 + draw`) to sample the test indices, then writes the train/test feature matrices and label-encoded outcomes for a given model and draw.
+
+```r
+write_model_split <- function(df, feature_cols, response_col,
+                              model_number, draw) {
+  
+  suffix <- sprintf("%s_draw_%02d", model_number, draw)
+  
+  set.seed(20240417 + draw)   # draw-specific seed so splits differ across draws
+  n_test   <- round(nrow(df) * test_size)
+  test_idx <- sort(sample(seq_len(nrow(df)), size = n_test, replace = FALSE))
+  train_idx <- setdiff(seq_len(nrow(df)), test_idx)
+  
+  X_train <- df[train_idx, feature_cols, drop = FALSE]
+  X_test  <- df[test_idx,  feature_cols, drop = FALSE]
+  
+  y_train <- label_encode(df[[response_col]][train_idx])
+  y_test  <- label_encode(df[[response_col]][test_idx])
+  
+  # Safety check
+  if (nrow(X_train) == 0 || nrow(X_test) == 0) {
+    stop(sprintf("Empty split produced for %s -- check upstream filtering.", suffix))
+  }
+  
+  write_csv(X_train, file.path(data_dir, sprintf("X_train_%s.csv", suffix)))
+  write_csv(X_test,  file.path(data_dir, sprintf("X_test_%s.csv",  suffix)))
+  write_csv(tibble(y_train = y_train),
+            file.path(data_dir, sprintf("y_train_%s.csv", suffix)))
+  write_csv(tibble(y_test = y_test),
+            file.path(data_dir, sprintf("y_test_%s.csv",  suffix)))
+  
+  cat(sprintf("  %s: %d train / %d test rows written\n",
+              suffix, nrow(X_train), nrow(X_test)))
+}
+```
+
+### `5_italy_xgboost.R`
+
+This script tunes and fits the XGBoost models.
+
+**Number of trees** (line 11):
+
+```r
+n_estimators     <- 250
+```
+
+**Stratified 80/20 splits** (lines 18-35): draws 5 independent stratified train/validation splits used for hyperparameter tuning, each with its own seed.
+
+```r
+stratified_shuffle_split <- function(y, n_splits, test_fraction, seed) {
+  y <- as.character(y)
+  splits <- vector("list", n_splits)
+  classes <- sort(unique(y))
+  
+  for (i in seq_len(n_splits)) {
+    set.seed(seed + i)
+    val_idx <- integer(0)
+    for (cls in classes) {
+      in_cls  <- which(y == cls)
+      n_val   <- round(length(in_cls) * test_fraction)
+      val_idx <- c(val_idx, sample(in_cls, size = n_val, replace = FALSE))
+    }
+    train_idx  <- setdiff(seq_along(y), val_idx)
+    splits[[i]] <- list(train = train_idx, val = sort(val_idx))
+  }
+  splits
+}
+```
+
+**Random oversampling** (lines 37-54): randomly oversamples the minority class with replacement up to the size of the majority class within a training fold.
+
+```r
+random_over_sample <- function(X, y, seed = NULL) {
+  if (!is.null(seed)) set.seed(seed)
+  y <- as.integer(y)
+  tab <- table(y)
+  max_n <- max(tab)
+  
+  keep_rows <- integer(0)
+  for (cls in names(tab)) {
+    in_cls <- which(y == as.integer(cls))
+    if (length(in_cls) < max_n) {
+      extra <- sample(in_cls, size = max_n - length(in_cls), replace = TRUE)
+      keep_rows <- c(keep_rows, in_cls, extra)
+    } else {
+      keep_rows <- c(keep_rows, in_cls)
+    }
+  }
+  list(X = X[keep_rows, , drop = FALSE], y = y[keep_rows])
+}
+```
+
+**Test set metrics** (lines 85-116): computes precision, recall, F1, accuracy, and ROC AUC from the confusion matrix at a fixed 0.5 probability threshold.
+
+```r
+compute_metrics <- function(y_true, prob_pos, threshold = 0.5) {
+  y_true <- as.integer(y_true)
+  y_pred <- as.integer(prob_pos >= threshold)
+  
+  tp <- sum(y_true == 1 & y_pred == 1)
+  fp <- sum(y_true == 0 & y_pred == 1)
+  fn <- sum(y_true == 1 & y_pred == 0)
+  tn <- sum(y_true == 0 & y_pred == 0)
+  
+  precision <- if ((tp + fp) == 0) 0 else tp / (tp + fp)
+  recall    <- if ((tp + fn) == 0) 0 else tp / (tp + fn)
+  f1        <- if ((precision + recall) == 0) 0
+  else 2 * precision * recall / (precision + recall)
+  accuracy  <- (tp + tn) / length(y_true)
+  
+  roc_auc <- suppressMessages(
+    as.numeric(pROC::auc(pROC::roc(
+      response  = y_true,
+      predictor = prob_pos,
+      levels    = c(0, 1),
+      direction = "<"
+    )))
+  )
+  
+  list(
+    test_precision = precision,
+    test_recall    = recall,
+    test_roc_auc   = roc_auc,
+    test_accuracy  = accuracy,
+    test_f1        = f1
+  )
+}
+```
+
+### `6_italy_rf.R`
+
+This script tunes and fits the Random Forest models.
+
+**Number of trees** (line 12):
+
+```r
+n_estimators     <- 250
+```
+
+The `stratified_shuffle_split()`, `random_over_sample()`, and `compute_metrics()` functions in this script are identical to their counterparts in `5_italy_xgboost.R` shown above (they sit at lines 23-40, 42-59, and 98-129 respectively here, shifted down by the extra `library()` and cluster-setup lines at the top of the script), so they are not repeated a second time.
+
+### `7_collect_results_italy.R`
+
+This script pools the cross-validation results across the 20 draws to produce Table 2. It is not otherwise referenced in the Methodology.
+
+**Per-draw CV summary** (lines 19-49): for each draw, computes the mean 5-fold CV score (`Q_i`) and the variance of that mean (`U_i`) for every metric.
+
+```r
+for (mn in model_numbers) {
+  for (mt in model_types) {
+    for (draw in seq_len(N_DRAWS)) {
+      rds_path <- file.path(
+        results_dir, sprintf("italy_%s_%s_draw_%02d.rds", mn, mt, draw)
+      )
+      cv_scores <- readRDS(rds_path)
+      
+      for (m in seq_along(metric_names)) {
+        fold_vals <- cv_scores[[metric_names[m]]]
+        Q_i <- mean(fold_vals)
+        U_i <- var(fold_vals) / n_splits   # variance of the mean of 5 folds
+        
+        per_draw_rows[[idx]] <- data.frame(
+          model_number = mn,
+          model_type   = mt,
+          draw         = draw,
+          metric       = metric_short[m],
+          Q_i          = Q_i,
+          U_i          = U_i,
+          stringsAsFactors = FALSE
+        )
+        idx <- idx + 1L
+      }
+    }
+  }
+}
+
+per_draw_df <- bind_rows(per_draw_rows)
+write_csv(per_draw_df, file.path(results_dir, "italy_cv_results_per_draw.csv"))
+cat(sprintf("Wrote italy_cv_results_per_draw.csv (%d rows)\n", nrow(per_draw_df)))
+```
+
+**Pooling across the 20 draws** (lines 51-94): applies the same Rubin's Rules formula used elsewhere in the pipeline to pool the per-draw CV scores into the final `precision`/`recall`/`roc_auc`/`accuracy`/`f1` (mean and SD) columns reported in Table 2.
+
+```r
+# Pool across the 20 draws via Rubin's Rules, per (model_number, model_type, metric)
+pool_rubins_rules <- function(Q_i, U_i) {
+  M       <- length(Q_i)
+  Q_bar   <- mean(Q_i)
+  U_bar   <- mean(U_i)
+  B       <- var(Q_i)
+  T_total <- U_bar + (1 + 1 / M) * B
+  list(Q_bar = Q_bar, pooled_se = sqrt(T_total))
+}
+
+for (mn in model_numbers) {
+  
+  wide_rows <- list()
+  ridx <- 1L
+  
+  for (mt in model_types) {
+    
+    row <- list(model_number = mn, model_type = mt)
+    
+    for (m in metric_short) {
+      sub <- per_draw_df %>%
+        dplyr::filter(.data$model_number == mn,
+                      .data$model_type   == mt,
+                      .data$metric       == m)
+      
+      pooled <- pool_rubins_rules(sub$Q_i, sub$U_i)
+      row[[m]]                 <- pooled$Q_bar
+      row[[paste0(m, "_std")]] <- pooled$pooled_se
+    }
+    
+    wide_rows[[ridx]] <- as.data.frame(row, stringsAsFactors = FALSE)
+    ridx <- ridx + 1L
+  }
+  
+  final_df <- bind_rows(wide_rows)
+  
+  ordered_cols <- c("model_number", "model_type",
+                    unlist(lapply(metric_short, function(m) c(m, paste0(m, "_std")))))
+  final_df <- final_df[, ordered_cols]
+  
+  out_path <- file.path(results_dir, sprintf("italy_%s_final_results.csv", mn))
+  write_csv(final_df, out_path)
+  cat(sprintf("Wrote %s\n", basename(out_path)))
+}
+```
+
+### `8_permute_feature_importance_italy.R`
+
+This script computes feature importance by refitting each model 100 times per draw on freshly oversampled training data.
+
+**Number of refits** (line 9):
+
+```r
+num_perm     <- 100     
+```
+
+**Importance extraction (XGBoost)** (lines 66-97): fits one XGBoost model on freshly oversampled data, extracts the Gain-based importance, and normalises it to sum to 1 across features. The equivalent `rf_one_perm()` function (not shown) does the same for Random Forest using impurity-based importance.
+
+```r
+xgboost_one_perm <- function(X, y, params) {
+  upsampled <- random_over_sample(X, y)
+  X_up <- as.matrix(upsampled$X)
+  y_up <- as.numeric(upsampled$y)
+  
+  dtrain <- xgboost::xgb.DMatrix(data = X_up, label = y_up)
+  
+  xgb_params <- list(
+    objective        = "binary:logistic",
+    eval_metric      = "logloss",
+    eta              = if (!is.null(params$learning_rate))    params$learning_rate         else 0.3,
+    max_depth        = if (!is.null(params$max_depth))        as.integer(params$max_depth) else 6L,
+    subsample        = if (!is.null(params$subsample))        params$subsample             else 1,
+    colsample_bytree = if (!is.null(params$colsample_bytree)) params$colsample_bytree      else 1,
+    nthread          = 1
+  )
+  
+  fit <- xgboost::xgb.train(
+    params  = xgb_params,
+    data    = dtrain,
+    nrounds = n_estimators,
+    verbose = 0
+  )
+  
+  imp <- xgboost::xgb.importance(model = fit)
+  out <- setNames(numeric(ncol(X)), colnames(X))
+  matched <- intersect(imp$Feature, names(out))
+  out[matched] <- imp$Gain[match(matched, imp$Feature)]
+  s <- sum(out)
+  if (s > 0) out <- out / s
+  as.list(out)
+}
+```
+
+**Repeating 100 times per draw** (lines 152-191): runs the 100 refits for one draw in parallel and writes the per-fit importance values.
+
+```r
+permute_one_draw <- function(model_number, model_type, draw) {
+  cat(sprintf("\n%s - %s - draw %02d [%d workers]\n", model_type, model_number, draw, n_cores))
+  
+  X <- read_csv(file.path(data_dir, sprintf("X_train_%s_draw_%02d.csv", model_number, draw)),
+                na = character(), show_col_types = FALSE)
+  y <- read_csv(file.path(data_dir, sprintf("y_train_%s_draw_%02d.csv", model_number, draw)),
+                show_col_types = FALSE)$y_train
+  
+  params <- load_tuned_params(model_number, model_type)
+  
+  clusterExport(cl, varlist = c("X", "y", "params", "model_type"), envir = environment())
+  
+  rows <- parLapply(cl, seq_len(num_perm), function(i) {
+    one_perm_fn <- if (model_type == "xgboost") xgboost_one_perm else rf_one_perm
+    one_perm_fn(X, y, params)
+  })
+  
+  iter_df <- bind_rows(rows)
+  iter_path <- file.path(
+    results_dir,
+    sprintf("italy_%s_%s_draw_%02d_feature_importance.csv", model_number, model_type, draw)
+  )
+  write_csv(iter_df, iter_path)
+  
+  summary_df <- tibble(
+    feature           = names(iter_df),
+    mean_importance   = sapply(iter_df, mean),
+    median_importance = sapply(iter_df, median),
+    sd_importance      = sapply(iter_df, sd)
+  ) %>% arrange(desc(median_importance))
+  
+  summary_path <- file.path(
+    results_dir,
+    sprintf("italy_%s_%s_draw_%02d_summary.csv", model_number, model_type, draw)
+  )
+  write_csv(summary_df, summary_path)
+  
+  cat(sprintf("  wrote %s and %s (%d iterations)\n",
+              basename(iter_path), basename(summary_path), nrow(iter_df)))
+}
+```
+
+### `9_fit_and_test_models_italy.R`
+
+This script fits the final model for each draw on the full oversampled training set and evaluates it on the held-out test set.
+
+**Pooling the test set metrics across the 20 draws** (lines 226-265): applies Rubin's Rules to the per-draw test metrics and their within-draw standard errors (carried over from cross-validation) to produce the pooled estimate, pooled standard error, and 95% CI reported in Table 3.
+
+```r
+pooled_rows <- list()
+idx <- 1L
+
+for (model_number in model_numbers) {
+  for (model_type in model_types) {
+    subset_df <- per_draw_df %>%
+      dplyr::filter(model_number == !!model_number, model_type == !!model_type)
+    
+    for (metric in metric_names) {
+      Q_i <- subset_df[[metric]]
+      U_i <- subset_df[[paste0(metric, "_se")]]^2
+      M   <- length(Q_i)
+      
+      Q_bar <- mean(Q_i)
+      U_bar <- mean(U_i)
+      B     <- var(Q_i)
+      T_total <- U_bar + (1 + 1 / M) * B
+      pooled_se <- sqrt(T_total)
+      
+      pooled_rows[[idx]] <- data.frame(
+        model_number = model_number,
+        model_type   = model_type,
+        metric       = metric,
+        Q_bar        = Q_bar,
+        U_bar        = U_bar,
+        B            = B,
+        pooled_se    = pooled_se,
+        ci_lower95   = Q_bar - 1.96 * pooled_se,
+        ci_upper95   = Q_bar + 1.96 * pooled_se,
+        n_draws      = M,
+        stringsAsFactors = FALSE
+      )
+      idx <- idx + 1L
+    }
+  }
+}
+
+pooled_df <- bind_rows(pooled_rows)
+write_csv(pooled_df, file.path(results_dir, "italy_test_metrics_pooled.csv"))
+cat(sprintf("Wrote italy_test_metrics_pooled.csv (%d rows)\n", nrow(pooled_df)))
+```
+
+### `10_feature_importance_plot_italy.R`
+
+This script produces Figures 4 and 5.
+
+**The seven interpretive categories** (lines 17-30): self-protective behaviours, demographics, health/mental health/wellbeing, perceived illness threat, time, trust in government, and vaccination & health literacy.
+
+```r
+grouping_list <- c(
+  "Self protective behaviours",
+  "Demographics",
+  "Health, mental health and wellbeing",
+  "Perception of illness threat",
+  "Time",
+  "Trust in government",
+  "Vaccination & Health Literacy"
+)
+
+colour_palette <- setNames(
+  brewer.pal(length(grouping_list), "Set1"),
+  grouping_list
+)
+```
+
+**Building Figures 4 and 5** (lines 130-173): loads the pooled median importance for the top 10 features (region excluded), builds the Random Forest and XGBoost panels, and saves the combined figure for each model.
+
+```r
+create_bar_plot_italy <- function(model_type, model_number) {
+  df <- load_data_italy(model_type = model_type, model_number = model_number)
+  
+  labels_original <- levels(df$name)
+  labels          <- labels_clean_italy(labels_original)
+  
+  df <- df %>%
+    mutate(group_var = factor(group_var, levels = names(colour_palette)))
+  
+  ggplot(df, aes(x = mean_importance, y = name, fill = group_var)) +
+    geom_col(show.legend = TRUE) +
+    geom_errorbar(aes(xmin = q1, xmax = q2), width = 0.5) +
+    scale_x_continuous(expand = expansion(mult = c(0, 0.05))) +
+    scale_y_discrete(labels = labels) +
+    scale_fill_manual(values = colour_palette, drop = FALSE) +
+    guides(fill = guide_legend(nrow = 2)) +
+    labs(
+      y = NULL,
+      x = sprintf("Median feature importance (pooled across %d draws)", N_DRAWS),
+      fill = NULL
+    ) +
+    theme_bw() +
+    theme(
+      legend.position = "none",
+      text            = element_text(size = text_size),
+      axis.text.y     = element_text(size = 10),
+      plot.margin     = margin(t = 1, r = 15, b = 1, l = 1)
+    )
+}
+
+for (model_number in c("model_1", "model_2")) {
+  p_rf  <- create_bar_plot_italy(model_number = model_number, model_type = "rf")
+  p_xgb <- create_bar_plot_italy(model_number = model_number, model_type = "xgboost") +
+    theme(legend.position = "bottom")
+  
+  p <- (p_rf / p_xgb) +
+    plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")")
+  
+  out_path <- file.path(
+    plots_dir, sprintf("italy_mean_feature_importance_%s_both_models.png", model_number)
+  )
+  ggsave(out_path, plot = p, height = height, width = height, dpi = dpi)
+  cat(sprintf("wrote %s\n", out_path))
+}
+```
+
+### `11_pdp_italy.R`
+
+This script computes the partial dependence values underlying Figures 6-17.
+
+**One-hot family groupings and always-included variables** (lines 15-48): defines how one-hot encoded families (e.g. `i11_health_*`) are collapsed back to a single variable for PDP purposes, and specifies that vaccination status, HL-COVID, and VL are always included regardless of their feature-importance ranking.
+
+```r
+one_hot_families <- list(
+  vaccination_status = c("vaccination_status_1", "vaccination_status_2", "vaccination_status_3"),
+  i9_health           = c("i9_health_Not sure", "i9_health_Yes"),
+  i11_health          = c("i11_health_Not sure", "i11_health_Somewhat unwilling",
+                          "i11_health_Somewhat willing", "i11_health_Very unwilling",
+                          "i11_health_Very willing"),
+  employment_status   = c("employment_status_Full time student", "employment_status_Not working",
+                          "employment_status_Other", "employment_status_Part time employment",
+                          "employment_status_Retired", "employment_status_Unemployed"),
+  WCRex1              = c("WCRex1_Somewhat badly", "WCRex1_Somewhat well",
+                          "WCRex1_Very badly", "WCRex1_Very well"),
+  WCRex2              = c("WCRex2_A lot of confidence", "WCRex2_Don't know",
+                          "WCRex2_No confidence at all", "WCRex2_Not very much confidence"),
+  PHQ4_1              = c("PHQ4_1_Nearly every day", "PHQ4_1_Not at all",
+                          "PHQ4_1_Prefer not to say", "PHQ4_1_Several days"),
+  PHQ4_2              = c("PHQ4_2_Nearly every day", "PHQ4_2_Not at all",
+                          "PHQ4_2_Prefer not to say", "PHQ4_2_Several days"),
+  PHQ4_3              = c("PHQ4_3_Nearly every day", "PHQ4_3_Not at all",
+                          "PHQ4_3_Prefer not to say", "PHQ4_3_Several days"),
+  PHQ4_4              = c("PHQ4_4_Nearly every day", "PHQ4_4_Not at all",
+                          "PHQ4_4_Prefer not to say", "PHQ4_4_Several days"),
+  d1_comorbidities    = c("d1_comorbidities_Prefer_not_to_say", "d1_comorbidities_Yes"),
+  region              = c("region_Islands", "region_North east",
+                          "region_North west", "region_South")
+)
+
+always_include <- c("vaccination_status", "hl_covid_num", "vl_num")
+
+resolve_to_group <- function(feat, families) {
+  for (fam_name in names(families)) {
+    if (feat %in% families[[fam_name]]) return(fam_name)
+  }
+  feat
+}
+```
+
+### `12_pdp_plot_italy.R`
+
+This script pools the partial dependence values across draws and produces Figures 6-17.
+
+**Pooling continuous-feature PDPs** (lines 20-43): linearly interpolates each draw onto a shared 51-point grid, then takes the mean and $\pm1$ SD across draws at each grid point.
+
+```r
+pool_continuous <- function(sub_df, n_common_grid) {
+  x_num <- as.numeric(sub_df[["_x_"]])
+  draws <- sort(unique(sub_df$draw))
+  
+  x_common <- seq(min(x_num), max(x_num), length.out = n_common_grid)
+  
+  interp_mat <- sapply(draws, function(d) {
+    this_draw <- sub_df[sub_df$draw == d, ]
+    ord <- order(as.numeric(this_draw[["_x_"]]))
+    stats::approx(
+      x    = as.numeric(this_draw[["_x_"]])[ord],
+      y    = this_draw[["_yhat_"]][ord],
+      xout = x_common
+    )$y
+  })
+  
+  if (is.null(dim(interp_mat))) interp_mat <- matrix(interp_mat, ncol = 1)
+  
+  data.frame(
+    x_common  = x_common,
+    mean_yhat = rowMeans(interp_mat, na.rm = TRUE),
+    sd_yhat   = apply(interp_mat, 1, function(r) if (length(r) > 1) sd(r, na.rm = TRUE) else 0)
+  )
+}
+```
+
+**Building and saving each pooled PDP figure** (lines 60-121): produces the continuous-feature or categorical-feature plot as appropriate and saves it, looping over both models and both algorithms to generate all twelve figures.
+
+```r
+plot_pooled_feature <- function(sub_df, model_number, model_type, feat, plots_dir, n_common_grid) {
+  n_draws <- length(unique(sub_df$draw))
+  y_lab <- sprintf("Predicted probability of %s", outcome_label[[model_number]])
+  base_name <- sprintf("italy_%s_%s_pdp_%s", model_number, model_type, feat)
+  
+  continuous <- is_continuous(sub_df[["_x_"]])
+  
+  if (continuous) {
+    pooled <- pool_continuous(sub_df, n_common_grid)
+    p_pooled <- ggplot(pooled, aes(x = x_common, y = mean_yhat)) +
+      geom_ribbon(aes(ymin = mean_yhat - sd_yhat, ymax = mean_yhat + sd_yhat),
+                  fill = "#2166AC", alpha = 0.2) +
+      geom_line(colour = "#2166AC", linewidth = 1) +
+      labs(
+        title    = sprintf("%s: %s (%s)", feat, y_lab, model_type),
+        subtitle = if (n_draws > 1) sprintf("mean +/- 1 SD across %d draws", n_draws) else "single draw (draw 1)",
+        x = feat, y = y_lab
+      ) +
+      theme_minimal()
+    
+  } else {
+    pooled <- pool_categorical(sub_df)
+    p_pooled <- ggplot(pooled, aes(x = x_cat, y = mean_yhat, group = 1)) +
+      geom_line(colour = "#2166AC") +
+      geom_point(colour = "#2166AC", size = 2) +
+      geom_errorbar(aes(ymin = mean_yhat - sd_yhat, ymax = mean_yhat + sd_yhat), width = 0.1) +
+      labs(
+        title    = sprintf("%s: %s (%s)", feat, y_lab, model_type),
+        subtitle = if (n_draws > 1) sprintf("mean +/- 1 SD across %d draws", n_draws) else "single draw (draw 1)",
+        x = feat, y = y_lab
+      ) +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 30, hjust = 1))
+  }
+  
+  ggsave(file.path(plots_dir, paste0(base_name, "_pooled.png")), p_pooled,
+         width = 7, height = 5, dpi = 150)
+  
+  cat(sprintf("  %s: wrote _pooled.png (%d draw%s)\n",
+              feat, n_draws, if (n_draws > 1) "s" else ""))
+}
+
+model_numbers <- c("model_1", "model_2")
+model_types   <- c("rf", "xgboost")
+
+for (model_number in model_numbers) {
+  for (model_type in model_types) {
+    in_path <- file.path(results_dir, sprintf("italy_%s_%s_pdp_results.csv", model_number, model_type))
+    if (!file.exists(in_path)) {
+      cat(sprintf("Skipping %s / %s: %s not found.\n", model_number, model_type, basename(in_path)))
+      next
+    }
+    
+    cat(sprintf("\n=== %s - %s ===\n", model_number, model_type))
+    pdp_df <- read_csv(in_path, show_col_types = FALSE)
+    
+    for (feat in unique(pdp_df[["_vname_"]])) {
+      sub_df <- pdp_df[pdp_df[["_vname_"]] == feat, ]
+      plot_pooled_feature(sub_df, model_number, model_type, feat, plots_dir, n_common_grid)
+    }
+  }
+}
+```
+
+## Appendix B: Variable Dictionary
+
+Table \ref{tab:variable-dictionary} briefly describes each variable used in the analysis and referenced throughout this report.
+
+```{r variable-dictionary, echo=FALSE}
+library(kableExtra)
+
+variable_dictionary <- data.frame(
+  Variable = c(
+    "face_mask_behaviour_binary",
+    "protective_behaviour_binary",
+    "hl_covid_num",
+    "vl_num",
+    "vaccination_status",
+    "age",
+    "gender",
+    "household_size",
+    "region",
+    "employment_status",
+    "r1_1",
+    "r1_2",
+    "i9_health",
+    "i11_health",
+    "i2_health",
+    "cantril_ladder",
+    "PHQ4_1",
+    "PHQ4_2",
+    "PHQ4_3",
+    "PHQ4_4",
+    "WCRex1",
+    "WCRex2",
+    "d1_comorbidities",
+    "week_number"
+  ),
+  Description = c(
+    "Model 1 outcome: whether the respondent frequently/always wore a face mask, binarized from the median across 4 mask-wearing items.",
+    "Model 2 outcome: whether the respondent frequently/always complied with protective behaviours, binarized from the median across all 17 protective-behaviour items.",
+    "Simulated individual-level COVID-related health literacy (HL-COVID): 1 = Limited, 2 = Sufficient, 3 = Excellent.",
+    "Simulated individual-level vaccine literacy (VL): 1 = Limited, 2 = Sufficient, 3 = Good.",
+    "Respondent's vaccination status: 0 = unvaccinated, 1 = one dose, 2 = two doses, 3 = any other/missing response.",
+    "Respondent's age in years.",
+    "Respondent's gender (Male vs. Female).",
+    "Number of people in the respondent's household ('8 or more' recoded to 8).",
+    "Respondent's Italian region: North East, North West, South, Islands, or reference category Centre.",
+    "Respondent's employment status: Not working, Part time, Retired, Unemployed, Student, Other, or reference category Full time employment.",
+    "Perceived severity of COVID-19, 7-point agreement scale (1 = Disagree, 7 = Agree).",
+    "Perceived susceptibility to catching COVID-19, 7-point agreement scale (1 = Disagree, 7 = Agree).",
+    "Whether the respondent would isolate if they became unwell (Yes / No / Not sure).",
+    "Respondent's willingness to self-isolate if instructed by health authorities (Very willing to Very unwilling).",
+    "Number of people the respondent had face-to-face contact with outside their household.",
+    "Wellbeing / life-satisfaction rating on the 0-10 Cantril Ladder scale.",
+    "Little interest or pleasure in doing things -- depression screening item (PHQ-4).",
+    "Feeling down, depressed, or hopeless -- depression screening item (PHQ-4).",
+    "Feeling nervous, anxious, or on edge -- anxiety screening item (PHQ-4).",
+    "Not being able to stop or control worrying -- anxiety screening item (PHQ-4).",
+    "Respondent's rating of how well the national government has handled the coronavirus outbreak (Very badly to Very well).",
+    "Respondent's confidence in the national government's ability to handle/respond to the pandemic.",
+    "Derived comorbidity status: Yes, No, or Prefer not to say.",
+    "Fortnight index: number of complete 14-day blocks since the earliest response date in the cleaned sample."
+  )
+)
+
+knitr::kable(
+  variable_dictionary,
+  booktabs = TRUE,
+  longtable = TRUE,
+  caption = "Variables used in this project, with brief descriptions. \\label{tab:variable-dictionary}"
+) %>%
+  kableExtra::kable_styling(latex_options = c("repeat_header"), font_size = 9) %>%
+  kableExtra::column_spec(1, width = "4.5cm") %>%
+  kableExtra::column_spec(2, width = "10cm")
+```
